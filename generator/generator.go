@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pablolagosm/jdocgen/models"
+	"github.com/pablolagos/jdocgen/models"
 )
 
 // GenerateMarkdown generates Markdown documentation from API functions and struct definitions.
@@ -126,7 +126,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 
 	// Append Generator Note
 	sb.WriteString("## Documentation Generator\n\n")
-	sb.WriteString("This documentation was automatically generated using [jdocgen](https://github.com/pablolagosm/jdocgen), a CLI tool for generating Markdown documentation from annotated Go source files.\n\n")
+	sb.WriteString("This documentation was automatically generated using [jdocgen](https://github.com/pablolagos/jdocgen), a CLI tool for generating Markdown documentation from annotated Go source files.\n\n")
 
 	return sb.String()
 }

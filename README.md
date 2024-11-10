@@ -1,6 +1,6 @@
 # jdocgen
 
-![jdocgen Logo](https://github.com/pablolagosm/jdocgen/raw/main/logo.png) <!-- Optional: Add a logo if available -->
+![jdocgen Logo](https://github.com/pablolagos/jdocgen/raw/main/logo.png) <!-- Optional: Add a logo if available -->
 
 ## Overview
 
@@ -41,7 +41,7 @@ To install `jdocgen`, ensure you have [Go](https://golang.org/dl/) installed on 
 Run the following command:
 
 ```bash
-go install github.com/pablolagosm/jdocgen/cmd/jdocgen@latest
+go install github.com/pablolagos/jdocgen/cmd/jdocgen@latest
 ```
 
 This will compile the `jdocgen` binary and place it in your `$GOPATH/bin` directory. Make sure this directory is included in your system's `PATH` to run `jdocgen` from anywhere.
@@ -245,7 +245,7 @@ Each API function should be annotated with specific tags that describe its purpo
 // @license Apache-2.0
 // @contact api-support@example.com
 // @terms https://example.com/terms
-// @repository https://github.com/pablolagosm/jdocgen
+// @repository https://github.com/pablolagos/jdocgen
 // @tags User, Product, Management
 // @copyright 
 // © 2024 Your Company
@@ -263,7 +263,7 @@ func main() {
 // api/user.go
 package api
 
-import "github.com/pablolagosm/jdocgen/models"
+import "github.com/pablolagos/jdocgen/models"
 
 // @Command CreateUser
 // @Description Creates a new user in the system.
@@ -333,7 +333,7 @@ After running `jdocgen`, the `API_Documentation.md` will look like this:
 
 **Terms of Service:** https://example.com/terms
 
-**Repository:** [https://github.com/pablolagosm/jdocgen](https://github.com/pablolagosm/jdocgen)
+**Repository:** [https://github.com/pablolagos/jdocgen](https://github.com/pablolagos/jdocgen)
 
 **Tags:** User, Product, Management
 
@@ -430,7 +430,7 @@ Contributions are welcome! Whether it's reporting bugs, suggesting features, or 
 
 1. **Fork the Repository**
 
-   Click the [Fork](https://github.com/pablolagosm/jdocgen/fork) button at the top right of this page.
+   Click the [Fork](https://github.com/pablolagos/jdocgen/fork) button at the top right of this page.
 
 2. **Clone Your Fork**
 

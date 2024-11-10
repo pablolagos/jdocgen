@@ -1,3 +1,3 @@
-module github.com/pablolagosm/jdocgen
+module github.com/pablolagos/jdocgen
 
 go 1.23.1

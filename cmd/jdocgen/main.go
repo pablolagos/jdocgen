@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/pablolagosm/jdocgen/generator"
-	"github.com/pablolagosm/jdocgen/parser"
+	"github.com/pablolagos/jdocgen/generator"
+	"github.com/pablolagos/jdocgen/parser"
 )
 
 func main() {

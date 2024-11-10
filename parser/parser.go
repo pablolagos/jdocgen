@@ -12,7 +12,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/pablolagosm/jdocgen/models"
+	"github.com/pablolagos/jdocgen/models"
 )
 
 // ParseProject recursively parses all Go files in the project directory and its subdirectories.
