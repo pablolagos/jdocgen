@@ -93,7 +93,7 @@ To enable `jdocgen` to parse your Go source files effectively, you need to annot
 
 ### Global Tags
 
-Global tags provide metadata about the entire project. These should be placed in the comments associated with the `main` function or at the very top of `main.go`.
+Global tags provide metadata about the entire project. These can be placed in the comments associated with **any function** or at the very top of **any Go file** within the project.
 
 **Mandatory Global Tags:**
 
@@ -103,7 +103,6 @@ Global tags provide metadata about the entire project. These should be placed in
 
 **Optional Global Tags:**
 
-- `@author`
 - `@license`
 - `@contact`
 - `@terms`
@@ -114,25 +113,43 @@ Global tags provide metadata about the entire project. These should be placed in
 **Example:**
 
 ```go
-// cmd/jdocgen/main.go
-
 // @title JSON-RPC API Documentation
 // @version 1.0.0
 // @description This project provides a JSON-RPC API for managing users and products.
-// @license Apache-2.0
-// @contact api-support@example.com
-// @terms https://example.com/terms
-// @repository https://github.com/pablolagosm/jdocgen
-// @tags User, Product, Management
-// @copyright 
-// © 2024 Your Company
-
-package main
-
-func main() {
-	// Implementation here
-}
 ```
+
+**Placement:**
+
+- **Any Function:** You can include global tags in the comments of any function across your project. This allows you to organize annotations logically based on functionality.
+
+  ```go
+  // @title User Management API
+  // @version 2.0.1
+  // @description Handles user creation, updates, and deletion.
+  func ManageUser() {
+      // Implementation here
+  }
+  ```
+
+- **Top of Any Go File:** Alternatively, place global tags at the very top of any Go file to centralize project-wide metadata.
+
+  ```go
+  // @title Product Management API
+  // @version 1.2.3
+  // @description Manages product listings, updates, and removals.
+  
+  package product
+  
+  // Implementation here
+  ```
+
+**Notes:**
+
+- Ensure that **at least one file** in your project contains the **mandatory global tags** (`@title`, `@version`, `@description`) to successfully generate the documentation.
+- While global tags can be distributed across multiple files, it's recommended to **centralize them** in a single location (e.g., a dedicated `docs.go` file) to maintain consistency and avoid conflicts.
+
+---
+
 
 ### API Function Annotations
 

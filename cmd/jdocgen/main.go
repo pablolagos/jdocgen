@@ -1,4 +1,3 @@
-// cmd/jdocgen/main.go
 package main
 
 import (

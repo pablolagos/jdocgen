@@ -1,4 +1,3 @@
-// parser/parser.go
 package parser
 
 import (
@@ -22,7 +21,7 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 	var apiFunctions []models.APIFunction
 	structDefinitions := make(map[string]models.StructDefinition)
 	var projectInfo models.ProjectInfo
-	var mainFileFound bool
+	var projectInfoSet bool // To track if ProjectInfo has been set
 
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -102,23 +101,23 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 		// Parse functions with annotations
 		for _, decl := range fileAst.Decls {
 			if fn, isFn := decl.(*ast.FuncDecl); isFn && fn.Doc != nil {
-				// Check if this is main.go to parse global tags
-				if filepath.Base(path) == "main.go" {
-					mainFileFound = true
+				apiFunc, err := parseFunction(fn)
+				if err == nil {
+					apiFunctions = append(apiFunctions, apiFunc)
+				} else {
+					log.Printf("Skipping function %s: %v", fn.Name.Name, err)
+				}
+
+				// Attempt to parse global tags from any file
+				if !projectInfoSet {
 					globalInfo, err := parseGlobalTags(fn)
 					if err == nil {
 						projectInfo = globalInfo
+						projectInfoSet = true
 					} else {
-						log.Printf("Error parsing global tags in main.go: %v", err)
-						// Return error if mandatory tags are missing
-						return err
-					}
-				} else {
-					apiFunc, err := parseFunction(fn)
-					if err == nil {
-						apiFunctions = append(apiFunctions, apiFunc)
-					} else {
-						log.Printf("Skipping function %s: %v", fn.Name.Name, err)
+						// It's acceptable for non-main files to not have global tags
+						// Only log errors if mandatory tags are missing after parsing all files
+						log.Printf("Error parsing global tags in file %s: %v", path, err)
 					}
 				}
 			}
@@ -131,8 +130,8 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 		return nil, nil, projectInfo, err
 	}
 
-	if !mainFileFound {
-		return nil, nil, projectInfo, errors.New("main.go file not found. Please include global tags in main.go")
+	if !projectInfoSet {
+		return nil, nil, projectInfo, errors.New("no global tags found in any Go file. Please include global tags in at least one file")
 	}
 
 	return apiFunctions, structDefinitions, projectInfo, nil
@@ -216,7 +215,8 @@ func parseFunction(fn *ast.FuncDecl) (models.APIFunction, error) {
 	return apiFunc, nil
 }
 
-// parseGlobalTags parses global tags from main.go's comments.
+// parseGlobalTags parses global tags from any function's comments.
+// It looks for mandatory global tags and populates ProjectInfo.
 func parseGlobalTags(fn *ast.FuncDecl) (models.ProjectInfo, error) {
 	projectInfo := models.ProjectInfo{}
 	scanner := bufio.NewScanner(strings.NewReader(fn.Doc.Text()))
@@ -284,13 +284,13 @@ func parseGlobalTags(fn *ast.FuncDecl) (models.ProjectInfo, error) {
 
 	// Validate mandatory global tags
 	if projectInfo.Title == "" {
-		return projectInfo, errors.New("missing @title annotation in main.go")
+		return projectInfo, errors.New("missing @title annotation")
 	}
 	if projectInfo.Version == "" {
-		return projectInfo, errors.New("missing @version annotation in main.go")
+		return projectInfo, errors.New("missing @version annotation")
 	}
 	if projectInfo.Description == "" {
-		return projectInfo, errors.New("missing @description annotation in main.go")
+		return projectInfo, errors.New("missing @description annotation")
 	}
 
 	return projectInfo, nil
