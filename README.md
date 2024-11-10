@@ -134,10 +134,10 @@ Global tags provide metadata about the entire project. These can be placed in th
 - **Top of Any Go File:** Alternatively, place global tags at the very top of any Go file to centralize project-wide metadata.
 
   ```go
+  // Package product provides functionality to manage product listings.
   // @title Product Management API
   // @version 1.2.3
   // @description Manages product listings, updates, and removals.
-  
   package product
   
   // Implementation here
@@ -237,8 +237,6 @@ Each API function should be annotated with specific tags that describe its purpo
 #### `cmd/jdocgen/main.go`
 
 ```go
-// cmd/jdocgen/main.go
-
 // @title JSON-RPC API Documentation
 // @version 1.0.0
 // @description This project provides a JSON-RPC API for managing users and products.
@@ -249,7 +247,6 @@ Each API function should be annotated with specific tags that describe its purpo
 // @tags User, Product, Management
 // @copyright 
 // © 2024 Your Company
-
 package main
 
 func main() {
@@ -260,7 +257,6 @@ func main() {
 #### `api/user.go`
 
 ```go
-// api/user.go
 package api
 
 import "github.com/pablolagos/jdocgen/models"
