@@ -1,3 +1,4 @@
+// parser/parser.go
 package parser
 
 import (
@@ -98,9 +99,22 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 			}
 		}
 
+		// Parse file-level comments for global tags
+		if fileAst.Doc != nil && !projectInfoSet {
+			globalInfo, err := parseGlobalTags(fileAst.Doc)
+			if err == nil {
+				projectInfo = globalInfo
+				projectInfoSet = true
+			} else {
+				// Log the error but continue; maybe global tags are elsewhere
+				log.Printf("Error parsing global tags in file %s: %v", path, err)
+			}
+		}
+
 		// Parse functions with annotations
 		for _, decl := range fileAst.Decls {
 			if fn, isFn := decl.(*ast.FuncDecl); isFn && fn.Doc != nil {
+				// Parse API functions
 				apiFunc, err := parseFunction(fn)
 				if err == nil {
 					apiFunctions = append(apiFunctions, apiFunc)
@@ -108,16 +122,16 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 					log.Printf("Skipping function %s: %v", fn.Name.Name, err)
 				}
 
-				// Attempt to parse global tags from any file
+				// Attempt to parse global tags from function comments if not already set
 				if !projectInfoSet {
-					globalInfo, err := parseGlobalTags(fn)
+					globalInfo, err := parseGlobalTags(fn.Doc)
 					if err == nil {
 						projectInfo = globalInfo
 						projectInfoSet = true
 					} else {
-						// It's acceptable for non-main files to not have global tags
+						// It's acceptable for non-main functions to not have global tags
 						// Only log errors if mandatory tags are missing after parsing all files
-						log.Printf("Error parsing global tags in file %s: %v", path, err)
+						// So we can ignore errors here
 					}
 				}
 			}
@@ -215,11 +229,10 @@ func parseFunction(fn *ast.FuncDecl) (models.APIFunction, error) {
 	return apiFunc, nil
 }
 
-// parseGlobalTags parses global tags from any function's comments.
-// It looks for mandatory global tags and populates ProjectInfo.
-func parseGlobalTags(fn *ast.FuncDecl) (models.ProjectInfo, error) {
+// parseGlobalTags parses global tags from a CommentGroup (either file-level or function-level).
+func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 	projectInfo := models.ProjectInfo{}
-	scanner := bufio.NewScanner(strings.NewReader(fn.Doc.Text()))
+	scanner := bufio.NewScanner(strings.NewReader(cg.Text()))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if strings.HasPrefix(line, "@") {
