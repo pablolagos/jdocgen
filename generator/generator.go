@@ -124,5 +124,9 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 		sb.WriteString("---\n\n")
 	}
 
+	// Append Generator Note
+	sb.WriteString("## Documentation Generator\n\n")
+	sb.WriteString("This documentation was automatically generated using [jdocgen](https://github.com/pablolagosm/jdocgen), a CLI tool for generating Markdown documentation from annotated Go source files.\n\n")
+
 	return sb.String()
 }
