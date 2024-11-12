@@ -74,25 +74,18 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 			// Include struct definitions for parameters if applicable
 			for _, param := range fn.Parameters {
 				baseType, pkg := resolveType(param.Type)
-				if pkg == "" {
-					// Assuming same package
-					key := models.StructKey{
-						Package: "", // To be determined based on context
-						Name:    baseType,
+				if baseType == "" {
+					continue
+				}
+				structDef, exists := findStruct(structs, baseType, pkg)
+				if exists {
+					sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
+					sb.WriteString("| Field | Type | Description |\n")
+					sb.WriteString("|-------|------|-------------|\n")
+					for _, field := range structDef.Fields {
+						sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
 					}
-					structDef, exists := structs[key]
-					if exists {
-						sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
-						sb.WriteString("| Field | Type | Description |\n")
-						sb.WriteString("|-------|------|-------------|\n")
-						for _, field := range structDef.Fields {
-							sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
-						}
-						sb.WriteString("\n")
-					}
-				} else {
-					// Imported package struct
-					// Optionally, handle or skip
+					sb.WriteString("\n")
 				}
 			}
 		}
@@ -110,25 +103,18 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 			// Include struct definitions for return values if applicable
 			for _, ret := range fn.Results {
 				baseType, pkg := resolveType(ret.Type)
-				if pkg == "" {
-					// Assuming same package
-					key := models.StructKey{
-						Package: "", // To be determined based on context
-						Name:    baseType,
+				if baseType == "" {
+					continue
+				}
+				structDef, exists := findStruct(structs, baseType, pkg)
+				if exists {
+					sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
+					sb.WriteString("| Field | Type | Description |\n")
+					sb.WriteString("|-------|------|-------------|\n")
+					for _, field := range structDef.Fields {
+						sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
 					}
-					structDef, exists := structs[key]
-					if exists {
-						sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
-						sb.WriteString("| Field | Type | Description |\n")
-						sb.WriteString("|-------|------|-------------|\n")
-						for _, field := range structDef.Fields {
-							sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
-						}
-						sb.WriteString("\n")
-					}
-				} else {
-					// Imported package struct
-					// Optionally, handle or skip
+					sb.WriteString("\n")
 				}
 			}
 		}
@@ -155,4 +141,25 @@ func resolveType(typeStr string) (string, string) {
 		}
 	}
 	return typeStr, ""
+}
+
+// findStruct searches for a struct by its name and package.
+// If packageName is empty, it searches for structs with the given name regardless of package.
+func findStruct(structs map[models.StructKey]models.StructDefinition, name string, packageName string) (models.StructDefinition, bool) {
+	if packageName != "" {
+		key := models.StructKey{
+			Package: packageName,
+			Name:    name,
+		}
+		structDef, exists := structs[key]
+		return structDef, exists
+	}
+
+	// If packageName is empty, search for the struct by name irrespective of the package.
+	for _, structDef := range structs {
+		if structDef.Name == name {
+			return structDef, true
+		}
+	}
+	return models.StructDefinition{}, false
 }
