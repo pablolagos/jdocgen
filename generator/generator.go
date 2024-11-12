@@ -1,3 +1,4 @@
+// generator/generator.go
 package generator
 
 import (
@@ -16,7 +17,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 	// Global Project Information
 	sb.WriteString(fmt.Sprintf("# %s\n\n", projectInfo.Title))
 	sb.WriteString(fmt.Sprintf("**Version:** %s\n\n", projectInfo.Version))
-	sb.WriteString(fmt.Sprintf("**Description:** %s\n\n", projectInfo.Description))
+	sb.WriteString(fmt.Sprintf("**Description:**\n%s\n\n", projectInfo.Description))
 	if projectInfo.Author != "" {
 		sb.WriteString(fmt.Sprintf("**Author:** %s\n\n", projectInfo.Author))
 	}
@@ -62,7 +63,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 				if !param.Required {
 					requiredStatus = "*No*"
 				}
-				sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s | %s |\n", param.Name, param.Type, param.Description, requiredStatus))
+				sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", param.Name, param.Type, param.Description, requiredStatus))
 			}
 			sb.WriteString("\n")
 
@@ -78,7 +79,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 					sb.WriteString("| Field | Type | Description |\n")
 					sb.WriteString("|-------|------|-------------|\n")
 					for _, field := range structDef.Fields {
-						sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
+						sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", field.JSONName, field.Type, field.Description))
 					}
 					sb.WriteString("\n")
 				}
@@ -91,7 +92,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 			sb.WriteString("| Name | Type | Description |\n")
 			sb.WriteString("|------|------|-------------|\n")
 			for _, ret := range fn.Results {
-				sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", ret.Name, ret.Type, ret.Description))
+				sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", ret.Name, ret.Type, ret.Description))
 			}
 			sb.WriteString("\n")
 
@@ -103,11 +104,11 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 					baseType = strings.TrimPrefix(baseType, "*")
 				}
 				if structDef, exists := structs[baseType]; exists {
-					sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
+					sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", baseType))
 					sb.WriteString("| Field | Type | Description |\n")
 					sb.WriteString("|-------|------|-------------|\n")
 					for _, field := range structDef.Fields {
-						sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
+						sb.WriteString(fmt.Sprintf("| %s | %s | %s |\n", field.JSONName, field.Type, field.Description))
 					}
 					sb.WriteString("\n")
 				}
