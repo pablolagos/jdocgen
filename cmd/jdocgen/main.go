@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/pablolagos/jdocgen/generator"
 	"github.com/pablolagos/jdocgen/parser"
@@ -14,19 +15,20 @@ func main() {
 	dirPath := flag.String("dir", ".", "Directory of the Go project to parse")
 	flag.Parse()
 
+	// Resolve rootDir if it's a relative path
+	if !filepath.IsAbs(*dirPath) {
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error getting working directory: %v\n", err)
+			os.Exit(1)
+		}
+		*dirPath = filepath.Join(wd, *dirPath)
+	}
+
 	apiFunctions, structs, projectInfo, err := parser.ParseProject(*dirPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing project: %v\n", err)
 		os.Exit(1)
-	}
-
-	// Adjust StructKey.Package as needed based on your project's package structure
-	// Example: If your structs are in the "handlers" package
-	for key, structDef := range structs {
-		if key.Package == "" {
-			key.Package = "handlers" // Replace with your actual package name if different
-			structs[key] = structDef
-		}
 	}
 
 	markdown := generator.GenerateMarkdown(apiFunctions, structs, projectInfo)
