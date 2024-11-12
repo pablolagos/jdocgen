@@ -90,7 +90,7 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 						// Extract json tag
 						re := regexp.MustCompile(`json:"([^"]+)"`)
 						matches := re.FindStringSubmatch(tag)
-						if len(matches) > 1 {
+						if len(matches) > 1 && matches[1] != "-" {
 							jsonName = matches[1]
 						}
 					}
@@ -303,13 +303,15 @@ func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 	return projectInfo, nil
 }
 
-// extractFieldDescription extracts the description from a field's comment group (both Doc and Comment).
+// extractFieldDescription extracts the description from a field's comment groups (both Doc and Comment).
 func extractFieldDescription(doc *ast.CommentGroup, comment *ast.CommentGroup) string {
 	comments := []string{}
 
 	if doc != nil {
 		for _, c := range doc.List {
 			line := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
+			line = strings.TrimSpace(strings.TrimPrefix(line, "/*"))
+			line = strings.TrimSpace(strings.TrimSuffix(line, "*/"))
 			comments = append(comments, line)
 		}
 	}
@@ -317,6 +319,8 @@ func extractFieldDescription(doc *ast.CommentGroup, comment *ast.CommentGroup) s
 	if comment != nil {
 		for _, c := range comment.List {
 			line := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
+			line = strings.TrimSpace(strings.TrimPrefix(line, "/*"))
+			line = strings.TrimSpace(strings.TrimSuffix(line, "*/"))
 			comments = append(comments, line)
 		}
 	}
