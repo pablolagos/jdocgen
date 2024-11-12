@@ -237,6 +237,13 @@ func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 	scanner := bufio.NewScanner(strings.NewReader(cg.Text()))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+
+		// Remove comment prefixes like "//", "/*", and "*/"
+		line = strings.TrimPrefix(line, "//")
+		line = strings.TrimPrefix(line, "/*")
+		line = strings.TrimSuffix(line, "*/")
+		line = strings.TrimSpace(line)
+
 		if !strings.HasPrefix(line, "@") {
 			continue
 		}
