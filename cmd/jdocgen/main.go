@@ -20,13 +20,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Adjust StructKey.Package as needed; if your structs are all in the same package, set accordingly
-	// For simplicity, assuming all structs are in the root package (Package: "")
-	// Modify this logic based on your project's package structure
-	for key := range structs {
+	// Adjust StructKey.Package as needed based on your project's package structure
+	// Example: If your structs are in the "handlers" package
+	for key, structDef := range structs {
 		if key.Package == "" {
 			key.Package = "handlers" // Replace with your actual package name if different
-			structs[key] = structs[key]
+			structs[key] = structDef
 		}
 	}
 

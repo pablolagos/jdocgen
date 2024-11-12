@@ -1,3 +1,4 @@
+// models/models.go
 package models
 
 // StructKey uniquely identifies a struct by its package and name.

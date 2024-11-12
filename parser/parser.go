@@ -1,3 +1,4 @@
+// parser/parser.go
 package parser
 
 import (
@@ -251,7 +252,9 @@ func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 		if len(parts) == 0 {
 			continue
 		}
-		switch parts[0] {
+		// Convert annotation to lowercase for case-insensitive matching
+		annotation := strings.ToLower(parts[0])
+		switch annotation {
 		case "@title":
 			if len(parts) < 2 {
 				return projectInfo, errors.New("missing value in @title annotation")
