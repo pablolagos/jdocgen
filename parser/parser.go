@@ -14,17 +14,11 @@ import (
 	"github.com/pablolagos/jdocgen/models"
 )
 
-// StructKey uniquely identifies a struct by its package and name.
-type StructKey struct {
-	Package string
-	Name    string
-}
-
 // ParseProject recursively parses all Go files in the project directory and its subdirectories.
 // It returns a slice of APIFunctions, a map of StructDefinitions keyed by StructKey, and ProjectInfo.
-func ParseProject(rootDir string) ([]models.APIFunction, map[StructKey]models.StructDefinition, models.ProjectInfo, error) {
+func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]models.StructDefinition, models.ProjectInfo, error) {
 	var apiFunctions []models.APIFunction
-	structDefinitions := make(map[StructKey]models.StructDefinition)
+	structDefinitions := make(map[models.StructKey]models.StructDefinition)
 	var projectInfo models.ProjectInfo
 	projectInfoSet := false
 
@@ -115,7 +109,7 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[StructKey]models.St
 					structDef.Fields = append(structDef.Fields, structField)
 				}
 
-				key := StructKey{
+				key := models.StructKey{
 					Package: currentPackage,
 					Name:    structDef.Name,
 				}

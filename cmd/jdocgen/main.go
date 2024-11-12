@@ -3,50 +3,40 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/pablolagos/jdocgen/generator"
 	"github.com/pablolagos/jdocgen/parser"
 )
 
 func main() {
-	// Define command-line flags
-	output := flag.String("output", "API_Documentation.md", "Output file for the documentation")
-	dir := flag.String("dir", ".", "Root directory to parse for Go files")
+	outputPath := flag.String("output", "API_Documentation.md", "Path to the output Markdown file")
+	dirPath := flag.String("dir", ".", "Directory of the Go project to parse")
 	flag.Parse()
 
-	// Verify that the directory exists
-	absDir, err := filepath.Abs(*dir)
+	apiFunctions, structs, projectInfo, err := parser.ParseProject(*dirPath)
 	if err != nil {
-		log.Fatalf("Error determining absolute path: %v", err)
+		fmt.Fprintf(os.Stderr, "Error parsing project: %v\n", err)
+		os.Exit(1)
 	}
 
-	if _, err := os.Stat(absDir); os.IsNotExist(err) {
-		log.Fatalf("Directory does not exist: %s", absDir)
+	// Adjust StructKey.Package as needed; if your structs are all in the same package, set accordingly
+	// For simplicity, assuming all structs are in the root package (Package: "")
+	// Modify this logic based on your project's package structure
+	for key := range structs {
+		if key.Package == "" {
+			key.Package = "handlers" // Replace with your actual package name if different
+			structs[key] = structs[key]
+		}
 	}
 
-	// Parse the project directory recursively
-	functions, structs, projectInfo, err := parser.ParseProject(absDir)
+	markdown := generator.GenerateMarkdown(apiFunctions, structs, projectInfo)
+
+	err = os.WriteFile(*outputPath, []byte(markdown), 0644)
 	if err != nil {
-		log.Fatalf("Error parsing project: %v", err)
+		fmt.Fprintf(os.Stderr, "Error writing documentation: %v\n", err)
+		os.Exit(1)
 	}
 
-	if len(functions) == 0 {
-		log.Println("No API functions found with the specified annotations.")
-	}
-
-	// Generate Markdown
-	markdown := generator.GenerateMarkdown(functions, structs, projectInfo)
-
-	// Write to the output file
-	err = ioutil.WriteFile(*output, []byte(markdown), 0644)
-	if err != nil {
-		log.Fatalf("Error writing to output file: %v", err)
-	}
-
-	fpath, _ := filepath.Abs(*output)
-	fmt.Printf("Documentation successfully generated at %s\n", fpath)
+	fmt.Printf("Documentation generated successfully at %s\n", *outputPath)
 }

@@ -7,16 +7,10 @@ import (
 	"github.com/pablolagos/jdocgen/models"
 )
 
-// StructKey uniquely identifies a struct by its package and name.
-type StructKey struct {
-	Package string
-	Name    string
-}
-
 // GenerateMarkdown generates Markdown documentation from API functions and struct definitions.
 // It places struct definitions adjacent to their usage in Parameters or Return Values and includes global project info.
 // Additionally, it appends a note about the documentation generator at the end.
-func GenerateMarkdown(functions []models.APIFunction, structs map[StructKey]models.StructDefinition, projectInfo models.ProjectInfo) string {
+func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo) string {
 	var sb strings.Builder
 
 	// Global Project Information
@@ -81,7 +75,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[StructKey]mode
 				baseType, pkg := resolveType(param.Type)
 				if pkg == "" {
 					// Assuming same package
-					key := StructKey{
+					key := models.StructKey{
 						Package: "", // To be determined based on context
 						Name:    baseType,
 					}
@@ -117,7 +111,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[StructKey]mode
 				baseType, pkg := resolveType(ret.Type)
 				if pkg == "" {
 					// Assuming same package
-					key := StructKey{
+					key := models.StructKey{
 						Package: "", // To be determined based on context
 						Name:    baseType,
 					}

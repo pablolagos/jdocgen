@@ -1,6 +1,12 @@
 package models
 
-// APIFunction represents a JSON-RPC API function.
+// StructKey uniquely identifies a struct by its package and name.
+type StructKey struct {
+	Package string
+	Name    string
+}
+
+// APIFunction represents an API function with its annotations.
 type APIFunction struct {
 	Command     string
 	Description string
@@ -8,7 +14,7 @@ type APIFunction struct {
 	Results     []APIReturn
 }
 
-// APIParameter represents a parameter of an API function.
+// APIParameter represents a parameter in an API function.
 type APIParameter struct {
 	Name        string
 	Type        string
@@ -16,7 +22,7 @@ type APIParameter struct {
 	Required    bool
 }
 
-// APIReturn represents a return value of an API function.
+// APIReturn represents a return value from an API function.
 type APIReturn struct {
 	Name        string
 	Type        string
@@ -24,13 +30,13 @@ type APIReturn struct {
 	Required    bool
 }
 
-// StructDefinition represents a Go struct definition.
+// StructDefinition represents a struct with its fields.
 type StructDefinition struct {
 	Name   string
 	Fields []StructField
 }
 
-// StructField represents a field within a Go struct.
+// StructField represents a field within a struct.
 type StructField struct {
 	Name        string
 	Type        string
@@ -38,17 +44,16 @@ type StructField struct {
 	JSONName    string
 }
 
-// ProjectInfo holds global metadata about the project.
+// ProjectInfo holds global project metadata extracted from annotations.
 type ProjectInfo struct {
 	Title       string
 	Version     string
 	Description string
 	Author      string
-	Copyright   string
 	License     string
 	Contact     string
 	Terms       string
 	Repository  string
 	Tags        []string
-	// Add other global fields as needed
+	Copyright   string
 }
