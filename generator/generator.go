@@ -3,6 +3,7 @@ package generator
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/pablolagos/jdocgen/models"
@@ -52,9 +53,15 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 	sb.WriteString("## API Overview\n\n")
 	sb.WriteString("This document describes the functions available through the JSON-RPC API.\n\n")
 
+	// Sort API functions alphabetically by Command
+	sort.Slice(functions, func(i, j int) bool {
+		return functions[i].Command < functions[j].Command
+	})
+
 	// Document API Functions
 	for _, fn := range functions {
-		sb.WriteString(fmt.Sprintf("## `%s`\n\n", fn.Command))
+		// Remove backticks from function titles
+		sb.WriteString(fmt.Sprintf("## %s\n\n", fn.Command))
 		sb.WriteString(fmt.Sprintf("%s\n\n", fn.Description))
 
 		// Parameters
@@ -67,7 +74,8 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 				if !param.Required {
 					requiredStatus = "*No*"
 				}
-				sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s | %s |\n", param.Name, param.Type, param.Description, requiredStatus))
+				// Remove backticks from table cells and use bold for field names
+				sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %s |\n", param.Name, param.Type, param.Description, requiredStatus))
 			}
 			sb.WriteString("\n")
 
@@ -79,11 +87,12 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 				}
 				structDef, exists := findStruct(structs, baseType, pkg)
 				if exists {
-					sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
+					sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", baseType))
 					sb.WriteString("| Field | Type | Description |\n")
 					sb.WriteString("|-------|------|-------------|\n")
 					for _, field := range structDef.Fields {
-						sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
+						// Use bold for field names
+						sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", field.JSONName, field.Type, field.Description))
 					}
 					sb.WriteString("\n")
 				}
@@ -96,7 +105,8 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 			sb.WriteString("| Name | Type | Description |\n")
 			sb.WriteString("|------|------|-------------|\n")
 			for _, ret := range fn.Results {
-				sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", ret.Name, ret.Type, ret.Description))
+				// Remove backticks from table cells and use bold for field names
+				sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", ret.Name, ret.Type, ret.Description))
 			}
 			sb.WriteString("\n")
 
@@ -108,11 +118,12 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 				}
 				structDef, exists := findStruct(structs, baseType, pkg)
 				if exists {
-					sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
+					sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", baseType))
 					sb.WriteString("| Field | Type | Description |\n")
 					sb.WriteString("|-------|------|-------------|\n")
 					for _, field := range structDef.Fields {
-						sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
+						// Use bold for field names
+						sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", field.JSONName, field.Type, field.Description))
 					}
 					sb.WriteString("\n")
 				}
