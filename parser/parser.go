@@ -96,7 +96,7 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 					}
 
 					fieldType := exprToString(field.Type)
-					fieldDesc := extractFieldDescription(field.Doc)
+					fieldDesc := extractFieldDescription(field.Doc, field.Comment)
 
 					structField := models.StructField{
 						Name:        fieldName,
@@ -303,16 +303,24 @@ func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 	return projectInfo, nil
 }
 
-// extractFieldDescription extracts the description from a field's comment group.
-func extractFieldDescription(cg *ast.CommentGroup) string {
-	if cg == nil {
-		return ""
-	}
+// extractFieldDescription extracts the description from a field's comment group (both Doc and Comment).
+func extractFieldDescription(doc *ast.CommentGroup, comment *ast.CommentGroup) string {
 	comments := []string{}
-	for _, comment := range cg.List {
-		line := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
-		comments = append(comments, line)
+
+	if doc != nil {
+		for _, c := range doc.List {
+			line := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
+			comments = append(comments, line)
+		}
 	}
+
+	if comment != nil {
+		for _, c := range comment.List {
+			line := strings.TrimSpace(strings.TrimPrefix(c.Text, "//"))
+			comments = append(comments, line)
+		}
+	}
+
 	return strings.Join(comments, " ")
 }
 
