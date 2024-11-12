@@ -7,10 +7,16 @@ import (
 	"github.com/pablolagos/jdocgen/models"
 )
 
+// StructKey uniquely identifies a struct by its package and name.
+type StructKey struct {
+	Package string
+	Name    string
+}
+
 // GenerateMarkdown generates Markdown documentation from API functions and struct definitions.
 // It places struct definitions adjacent to their usage in Parameters or Return Values and includes global project info.
 // Additionally, it appends a note about the documentation generator at the end.
-func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.StructDefinition, projectInfo models.ProjectInfo) string {
+func GenerateMarkdown(functions []models.APIFunction, structs map[StructKey]models.StructDefinition, projectInfo models.ProjectInfo) string {
 	var sb strings.Builder
 
 	// Global Project Information
@@ -72,19 +78,26 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 
 			// Include struct definitions for parameters if applicable
 			for _, param := range fn.Parameters {
-				// Handle pointer types
-				baseType := param.Type
-				if strings.HasPrefix(baseType, "*") {
-					baseType = strings.TrimPrefix(baseType, "*")
-				}
-				if structDef, exists := structs[baseType]; exists {
-					sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
-					sb.WriteString("| Field | Type | Description |\n")
-					sb.WriteString("|-------|------|-------------|\n")
-					for _, field := range structDef.Fields {
-						sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
+				baseType, pkg := resolveType(param.Type)
+				if pkg == "" {
+					// Assuming same package
+					key := StructKey{
+						Package: "", // To be determined based on context
+						Name:    baseType,
 					}
-					sb.WriteString("\n")
+					structDef, exists := structs[key]
+					if exists {
+						sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
+						sb.WriteString("| Field | Type | Description |\n")
+						sb.WriteString("|-------|------|-------------|\n")
+						for _, field := range structDef.Fields {
+							sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
+						}
+						sb.WriteString("\n")
+					}
+				} else {
+					// Imported package struct
+					// Optionally, handle or skip
 				}
 			}
 		}
@@ -101,19 +114,26 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 
 			// Include struct definitions for return values if applicable
 			for _, ret := range fn.Results {
-				// Handle pointer types
-				baseType := ret.Type
-				if strings.HasPrefix(baseType, "*") {
-					baseType = strings.TrimPrefix(baseType, "*")
-				}
-				if structDef, exists := structs[baseType]; exists {
-					sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
-					sb.WriteString("| Field | Type | Description |\n")
-					sb.WriteString("|-------|------|-------------|\n")
-					for _, field := range structDef.Fields {
-						sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
+				baseType, pkg := resolveType(ret.Type)
+				if pkg == "" {
+					// Assuming same package
+					key := StructKey{
+						Package: "", // To be determined based on context
+						Name:    baseType,
 					}
-					sb.WriteString("\n")
+					structDef, exists := structs[key]
+					if exists {
+						sb.WriteString(fmt.Sprintf("#### `%s` Structure\n\n", baseType))
+						sb.WriteString("| Field | Type | Description |\n")
+						sb.WriteString("|-------|------|-------------|\n")
+						for _, field := range structDef.Fields {
+							sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", field.JSONName, field.Type, field.Description))
+						}
+						sb.WriteString("\n")
+					}
+				} else {
+					// Imported package struct
+					// Optionally, handle or skip
 				}
 			}
 		}
@@ -126,4 +146,18 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 	sb.WriteString("This documentation was automatically generated using [jdocgen](https://github.com/pablolagos/jdocgen), a CLI tool for generating Markdown documentation from annotated Go source files.\n\n")
 
 	return sb.String()
+}
+
+// resolveType parses the type string to extract the base type and its package if present.
+// For example:
+// - "License" returns ("License", "")
+// - "jrpc.License" returns ("License", "jrpc")
+func resolveType(typeStr string) (string, string) {
+	if strings.Contains(typeStr, ".") {
+		parts := strings.Split(typeStr, ".")
+		if len(parts) == 2 {
+			return parts[1], parts[0]
+		}
+	}
+	return typeStr, ""
 }

@@ -14,11 +14,17 @@ import (
 	"github.com/pablolagos/jdocgen/models"
 )
 
+// StructKey uniquely identifies a struct by its package and name.
+type StructKey struct {
+	Package string
+	Name    string
+}
+
 // ParseProject recursively parses all Go files in the project directory and its subdirectories.
-// It returns a slice of APIFunctions, a map of StructDefinitions, and ProjectInfo.
-func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.StructDefinition, models.ProjectInfo, error) {
+// It returns a slice of APIFunctions, a map of StructDefinitions keyed by StructKey, and ProjectInfo.
+func ParseProject(rootDir string) ([]models.APIFunction, map[StructKey]models.StructDefinition, models.ProjectInfo, error) {
 	var apiFunctions []models.APIFunction
-	structDefinitions := make(map[string]models.StructDefinition)
+	structDefinitions := make(map[StructKey]models.StructDefinition)
 	var projectInfo models.ProjectInfo
 	projectInfoSet := false
 
@@ -46,6 +52,8 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 		if err != nil {
 			return nil // Skip files that can't be parsed
 		}
+
+		currentPackage := fileAst.Name.Name
 
 		// Extract global tags from file-level comments
 		if fileAst.Doc != nil && !projectInfoSet {
@@ -106,7 +114,12 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 					}
 					structDef.Fields = append(structDef.Fields, structField)
 				}
-				structDefinitions[structDef.Name] = structDef
+
+				key := StructKey{
+					Package: currentPackage,
+					Name:    structDef.Name,
+				}
+				structDefinitions[key] = structDef
 			}
 		}
 
@@ -118,7 +131,7 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 			}
 
 			// Extract API functions
-			apiFunc, err := parseFunction(fn)
+			apiFunc, err := parseFunction(fn, currentPackage)
 			if err == nil {
 				apiFunctions = append(apiFunctions, apiFunc)
 			}
@@ -148,7 +161,8 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[string]models.Struc
 }
 
 // parseFunction parses a function's comments to extract API annotations.
-func parseFunction(fn *ast.FuncDecl) (models.APIFunction, error) {
+// It also passes the current package name for type resolution.
+func parseFunction(fn *ast.FuncDecl, currentPackage string) (models.APIFunction, error) {
 	apiFunc := models.APIFunction{}
 	scanner := bufio.NewScanner(strings.NewReader(fn.Doc.Text()))
 	for scanner.Scan() {
