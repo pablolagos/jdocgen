@@ -196,19 +196,17 @@ func parseFunction(fn *ast.FuncDecl) (models.APIFunction, error) {
 			}
 			resultName := parts[1]
 			resultType := parts[2]
-			isOptional := false
-			resultDescParts := parts[3:]
-			// Check for 'optional' keyword
-			if len(resultDescParts) > 0 && strings.EqualFold(resultDescParts[0], "optional") {
-				isOptional = true
-				resultDescParts = resultDescParts[1:]
+			// Check for 'optional' keyword in @Result
+			if len(parts) > 3 && strings.EqualFold(parts[3], "optional") {
+				return apiFunc, errors.New("@Result annotations should not be marked as optional")
 			}
+			resultDescParts := parts[3:]
 			resultDesc := strings.Join(resultDescParts, " ")
 			result := models.APIReturn{
 				Name:        resultName,
 				Type:        resultType,
 				Description: resultDesc,
-				Required:    !isOptional,
+				Required:    true, // All return values are required
 			}
 			apiFunc.Results = append(apiFunc.Results, result)
 		}

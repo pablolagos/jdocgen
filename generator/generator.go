@@ -9,6 +9,7 @@ import (
 
 // GenerateMarkdown generates Markdown documentation from API functions and struct definitions.
 // It places struct definitions adjacent to their usage in Parameters or Return Values and includes global project info.
+// Additionally, it appends a note about the documentation generator at the end.
 func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.StructDefinition, projectInfo models.ProjectInfo) string {
 	var sb strings.Builder
 
@@ -46,13 +47,9 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 
 	sb.WriteString("---\n\n")
 
-	// Introduction
-	sb.WriteString("## API Overview\n\n")
-	sb.WriteString("This document describes the functions available through the JSON-RPC API.\n\n")
-
 	// Document API Functions
 	for _, fn := range functions {
-		sb.WriteString(fmt.Sprintf("## `%s`\n\n", fn.Command))
+		sb.WriteString(fmt.Sprintf("## %s\n\n", fn.Command))
 		sb.WriteString(fmt.Sprintf("%s\n\n", fn.Description))
 
 		// Parameters
@@ -91,14 +88,10 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[string]models.
 		// Return Values
 		if len(fn.Results) > 0 {
 			sb.WriteString("### Return Values\n\n")
-			sb.WriteString("| Name | Type | Description | Required |\n")
-			sb.WriteString("|------|------|-------------|----------|\n")
+			sb.WriteString("| Name | Type | Description |\n")
+			sb.WriteString("|------|------|-------------|\n")
 			for _, ret := range fn.Results {
-				requiredStatus := "Yes"
-				if !ret.Required {
-					requiredStatus = "*No*"
-				}
-				sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s | %s |\n", ret.Name, ret.Type, ret.Description, requiredStatus))
+				sb.WriteString(fmt.Sprintf("| `%s` | `%s` | %s |\n", ret.Name, ret.Type, ret.Description))
 			}
 			sb.WriteString("\n")
 
