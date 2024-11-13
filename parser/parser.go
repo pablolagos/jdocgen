@@ -1,4 +1,3 @@
-// parser/parser.go
 package parser
 
 import (
@@ -49,6 +48,9 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 		}
 
 		currentPackage := fileAst.Name.Name
+
+		// Extract import aliases
+		importAliases := extractImportAliases(fileAst)
 
 		// Extract global tags from file-level comments
 		if fileAst.Doc != nil && !projectInfoSet {
@@ -126,7 +128,7 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 			}
 
 			// Extract API functions
-			apiFunc, err := parseFunction(fn, currentPackage)
+			apiFunc, err := parseFunction(fn, currentPackage, importAliases)
 			if err == nil {
 				apiFunctions = append(apiFunctions, apiFunc)
 			}
@@ -155,10 +157,32 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 	return apiFunctions, structDefinitions, projectInfo, nil
 }
 
+// extractImportAliases extracts a map of alias to package name from the file's import declarations.
+func extractImportAliases(fileAst *ast.File) map[string]string {
+	importAliases := make(map[string]string)
+	for _, imp := range fileAst.Imports {
+		var alias string
+		if imp.Name != nil {
+			alias = imp.Name.Name
+		} else {
+			// Infer package name from import path
+			path := strings.Trim(imp.Path.Value, `"`)
+			parts := strings.Split(path, "/")
+			alias = parts[len(parts)-1]
+		}
+		// Assume package name is the last element of the import path
+		importAliases[alias] = alias
+	}
+	return importAliases
+}
+
 // parseFunction parses a function's comments to extract API annotations.
-// It also passes the current package name for type resolution.
-func parseFunction(fn *ast.FuncDecl, currentPackage string) (models.APIFunction, error) {
-	apiFunc := models.APIFunction{}
+// It also takes the current package name and import aliases for type resolution.
+func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[string]string) (models.APIFunction, error) {
+	apiFunc := models.APIFunction{
+		ImportAliases: importAliases,
+		PackageName:   currentPackage,
+	}
 	scanner := bufio.NewScanner(strings.NewReader(fn.Doc.Text()))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

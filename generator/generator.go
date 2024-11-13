@@ -1,4 +1,3 @@
-// generator/generator.go
 package generator
 
 import (
@@ -10,9 +9,9 @@ import (
 )
 
 // GenerateMarkdown generates Markdown documentation from API functions and struct definitions.
-// It places struct definitions adjacent to their usage in Parameters or Return Values and includes global project info.
+// It conditionally includes JSON-RPC 2.0 information based on the includeRFC flag.
 // Additionally, it appends a note about the documentation generator at the end.
-func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo) string {
+func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo, includeRFC bool) string {
 	var sb strings.Builder
 
 	// Global Project Information
@@ -49,7 +48,67 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 
 	sb.WriteString("---\n\n")
 
-	// Introduction
+	// Introduction Section
+	if includeRFC {
+		sb.WriteString("## Introduction\n\n")
+		sb.WriteString("This API adheres to the [JSON-RPC 2.0](https://www.jsonrpc.org/specification) specification, a lightweight remote procedure call (RPC) protocol encoded in JSON. JSON-RPC 2.0 allows for invoking methods on a server by sending JSON-encoded requests and receiving JSON-encoded responses.\n\n")
+		sb.WriteString("**Key Features of JSON-RPC 2.0:**\n\n")
+		sb.WriteString("- **Simple and Lightweight:** Minimalist design without unnecessary features.\n")
+		sb.WriteString("- **Transport Agnostic:** Can be used over various transport protocols such as HTTP, WebSocket, etc.\n")
+		sb.WriteString("- **Batch Requests:** Supports sending multiple requests in a single call.\n")
+		sb.WriteString("- **Notifications:** Allows sending requests that do not require responses.\n\n")
+
+		// JSON-RPC 2.0 Request and Response Structures Section
+		sb.WriteString("## JSON-RPC 2.0 Request and Response Structures\n\n")
+		sb.WriteString("The API follows the [JSON-RPC 2.0](https://www.jsonrpc.org/specification) specification, which defines a simple and lightweight protocol for remote procedure calls using JSON.\n\n")
+
+		sb.WriteString("### Request Structure\n\n")
+		sb.WriteString("A JSON-RPC request object must contain the following members:\n\n")
+		sb.WriteString("- **jsonrpc**: A string specifying the version of the JSON-RPC protocol. Must be exactly `\"2.0\"`.\n")
+		sb.WriteString("- **method**: A string containing the name of the method to be invoked.\n")
+		sb.WriteString("- **params** (optional): A structured value that holds the parameter values to be used during the invocation of the method.\n")
+		sb.WriteString("- **id**: An identifier established by the client that must be unique for each request. It is used to match responses with requests.\n\n")
+
+		sb.WriteString("**Example:**\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"jsonrpc\": \"2.0\",\n")
+		sb.WriteString("  \"method\": \"getLicense\",\n")
+		sb.WriteString("  \"params\": { \"userId\": 12345 },\n")
+		sb.WriteString("  \"id\": 1\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		sb.WriteString("### Response Structure\n\n")
+		sb.WriteString("A JSON-RPC response object must contain the following members:\n\n")
+		sb.WriteString("- **jsonrpc**: A string specifying the version of the JSON-RPC protocol. Must be exactly `\"2.0\"`.\n")
+		sb.WriteString("- **result**: This member is required on success. It holds the value returned by the invoked method.\n")
+		sb.WriteString("- **error**: This member is required on error. It contains an error object with information about the error.\n")
+		sb.WriteString("- **id**: The same identifier as the request it is responding to.\n\n")
+
+		sb.WriteString("**Example (Success):**\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"jsonrpc\": \"2.0\",\n")
+		sb.WriteString("  \"result\": { \"licenseCode\": \"ABC123\", \"isValid\": true },\n")
+		sb.WriteString("  \"id\": 1\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+
+		sb.WriteString("**Example (Error):**\n\n")
+		sb.WriteString("```json\n")
+		sb.WriteString("{\n")
+		sb.WriteString("  \"jsonrpc\": \"2.0\",\n")
+		sb.WriteString("  \"error\": {\n")
+		sb.WriteString("    \"code\": -32601,\n")
+		sb.WriteString("    \"message\": \"Method not found\"\n")
+		sb.WriteString("  },\n")
+		sb.WriteString("  \"id\": 1\n")
+		sb.WriteString("}\n")
+		sb.WriteString("```\n\n")
+	}
+
+	// API Overview
 	sb.WriteString("## API Overview\n\n")
 	sb.WriteString("This document describes the functions available through the JSON-RPC API.\n\n")
 
@@ -85,7 +144,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 				if baseType == "" {
 					continue
 				}
-				structDef, exists := findStruct(structs, baseType, pkg)
+				structDef, exists := findStruct(structs, baseType, pkg, fn.PackageName)
 				if exists {
 					sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", baseType))
 					sb.WriteString("| Field | Type | Description |\n")
@@ -116,7 +175,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 				if baseType == "" {
 					continue
 				}
-				structDef, exists := findStruct(structs, baseType, pkg)
+				structDef, exists := findStruct(structs, baseType, pkg, fn.PackageName)
 				if exists {
 					sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", baseType))
 					sb.WriteString("| Field | Type | Description |\n")
@@ -156,7 +215,8 @@ func resolveType(typeStr string) (string, string) {
 
 // findStruct searches for a struct by its name and package.
 // If packageName is empty, it searches for structs with the given name regardless of package.
-func findStruct(structs map[models.StructKey]models.StructDefinition, name string, packageName string) (models.StructDefinition, bool) {
+// It prioritizes local package structs over imported ones when packageName is empty.
+func findStruct(structs map[models.StructKey]models.StructDefinition, name string, packageName string, localPackage string) (models.StructDefinition, bool) {
 	if packageName != "" {
 		key := models.StructKey{
 			Package: packageName,
@@ -166,7 +226,17 @@ func findStruct(structs map[models.StructKey]models.StructDefinition, name strin
 		return structDef, exists
 	}
 
-	// If packageName is empty, search for the struct by name irrespective of the package.
+	// First, search in the local package
+	key := models.StructKey{
+		Package: localPackage,
+		Name:    name,
+	}
+	structDef, exists := structs[key]
+	if exists {
+		return structDef, true
+	}
+
+	// If not found locally, search globally (first match)
 	for _, structDef := range structs {
 		if structDef.Name == name {
 			return structDef, true

@@ -1,9 +1,12 @@
+// cmd/jdocgen/main.go
 package main
 
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
+
 	"path/filepath"
 
 	"github.com/pablolagos/jdocgen/generator"
@@ -11,33 +14,33 @@ import (
 )
 
 func main() {
+	// Define command-line flags
 	outputPath := flag.String("output", "API_Documentation.md", "Path to the output Markdown file")
-	dirPath := flag.String("dir", ".", "Directory of the Go project to parse")
+	dirPath := flag.String("dir", ".", "Directory to parse for Go source files")
+	omitRFC := flag.Bool("omit-rfc", false, "Omit JSON-RPC 2.0 specification information from the documentation")
+
 	flag.Parse()
 
-	// Resolve rootDir if it's a relative path
-	if !filepath.IsAbs(*dirPath) {
-		wd, err := os.Getwd()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting working directory: %v\n", err)
-			os.Exit(1)
-		}
-		*dirPath = filepath.Join(wd, *dirPath)
-	}
-
-	apiFunctions, structs, projectInfo, err := parser.ParseProject(*dirPath)
+	// Validate directory path
+	absDir, err := filepath.Abs(*dirPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing project: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Error resolving directory path: %v", err)
 	}
 
-	markdown := generator.GenerateMarkdown(apiFunctions, structs, projectInfo)
+	// Parse the project
+	functions, structs, projectInfo, err := parser.ParseProject(absDir)
+	if err != nil {
+		log.Fatalf("Error parsing project: %v", err)
+	}
 
+	// Generate Markdown documentation
+	markdown := generator.GenerateMarkdown(functions, structs, projectInfo, !*omitRFC)
+
+	// Write to the output file
 	err = os.WriteFile(*outputPath, []byte(markdown), 0644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing documentation: %v\n", err)
-		os.Exit(1)
+		log.Fatalf("Error writing to output file: %v", err)
 	}
 
-	fmt.Printf("Documentation generated successfully at %s\n", *outputPath)
+	fmt.Printf("Documentation successfully generated at %s\n", *outputPath)
 }

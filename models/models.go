@@ -1,4 +1,3 @@
-// models/models.go
 package models
 
 // StructKey uniquely identifies a struct by its package and name.
@@ -9,10 +8,12 @@ type StructKey struct {
 
 // APIFunction represents an API function with its annotations.
 type APIFunction struct {
-	Command     string
-	Description string
-	Parameters  []APIParameter
-	Results     []APIReturn
+	Command       string
+	Description   string
+	Parameters    []APIParameter
+	Results       []APIReturn
+	ImportAliases map[string]string // Maps alias to package name
+	PackageName   string            // Local package name where the function resides
 }
 
 // APIParameter represents a parameter in an API function.
