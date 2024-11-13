@@ -12,6 +12,7 @@ type APIFunction struct {
 	Description   string
 	Parameters    []APIParameter
 	Results       []APIReturn
+	Errors        []APIError        // Holds errors
 	ImportAliases map[string]string // Maps alias to package name
 	PackageName   string            // Local package name where the function resides
 }
@@ -30,6 +31,12 @@ type APIReturn struct {
 	Type        string
 	Description string
 	Required    bool
+}
+
+// APIError represents an error that an API function can return.
+type APIError struct {
+	Code        int    // Numeric error code
+	Description string // Description of the error
 }
 
 // StructDefinition represents a struct with its fields.

@@ -1,17 +1,29 @@
+// parser/parser.go
 package parser
 
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/pablolagos/jdocgen/models"
+)
+
+// Sentinel errors for specific annotation issues
+var (
+	ErrMissingCommand     = errors.New("missing @Command annotation")
+	ErrMultipleResults    = errors.New("multiple @Result annotations found")
+	ErrInvalidErrorCode   = errors.New("@Error code must be a numeric literal")
+	ErrMissingDescription = errors.New("missing @Description annotation")
 )
 
 // ParseProject recursively parses all Go files in the project directory and its subdirectories.
@@ -21,6 +33,9 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 	structDefinitions := make(map[models.StructKey]models.StructDefinition)
 	var projectInfo models.ProjectInfo
 	projectInfoSet := false
+
+	// Initialize a new FileSet
+	fset := token.NewFileSet()
 
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -41,7 +56,6 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 		}
 
 		// Parse the Go file
-		fset := token.NewFileSet()
 		fileAst, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 		if err != nil {
 			return nil // Skip files that can't be parsed
@@ -128,9 +142,19 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 			}
 
 			// Extract API functions
-			apiFunc, err := parseFunction(fn, currentPackage, importAliases)
+			apiFunc, err := parseFunction(fn, currentPackage, importAliases, path, fset)
 			if err == nil {
 				apiFunctions = append(apiFunctions, apiFunc)
+			} else {
+				// Check if the error is ErrMissingCommand
+				if !errors.Is(err, ErrMissingCommand) {
+					// Log other errors with file name and position
+					// Extract function name and position
+					functionName := fn.Name.Name
+					position := fset.Position(fn.Pos())
+					log.Printf("Error in file %s at line %d: Function '%s' skipped due to error: %v", position.Filename, position.Line, functionName, err)
+				}
+				// If ErrMissingCommand, do not log and skip silently
 			}
 
 			// Extract global tags from function-level comments if not set
@@ -176,13 +200,18 @@ func extractImportAliases(fileAst *ast.File) map[string]string {
 	return importAliases
 }
 
-// parseFunction parses a function's comments to extract API annotations.
-// It also takes the current package name and import aliases for type resolution.
-func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[string]string) (models.APIFunction, error) {
+// parseFunction parses a function's comments to extract API annotations, including @Error tags.
+// It enforces only one @Result annotation and validates @Error codes.
+// If multiple @Result annotations are found, it returns ErrMultipleResults with details.
+// If @Command is missing, it returns ErrMissingCommand.
+// Other annotation issues return corresponding errors.
+func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[string]string, fileName string, fset *token.FileSet) (models.APIFunction, error) {
 	apiFunc := models.APIFunction{
 		ImportAliases: importAliases,
 		PackageName:   currentPackage,
 	}
+
+	var resultAnnotations []*ast.Comment
 	scanner := bufio.NewScanner(strings.NewReader(fn.Doc.Text()))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -190,7 +219,7 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 			continue
 		}
 		parts := strings.Fields(line)
-		if len(parts) == 0 {
+		if len(parts) < 1 {
 			continue
 		}
 		switch parts[0] {
@@ -224,33 +253,70 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 			}
 			apiFunc.Parameters = append(apiFunc.Parameters, param)
 		case "@Result":
+			// Collect all @Result annotations to check for multiples
+			resultAnnotations = append(resultAnnotations, &ast.Comment{Text: line})
+		case "@Error":
 			if len(parts) < 3 {
-				return apiFunc, errors.New("invalid @Result annotation")
+				return apiFunc, errors.New("invalid @Error annotation")
 			}
-			resultName := parts[1]
-			resultType := parts[2]
-			// Check for 'optional' keyword in @Result
-			if len(parts) > 3 && strings.EqualFold(parts[3], "optional") {
-				return apiFunc, errors.New("@Result annotations should not be marked as optional")
+			errorCodeStr := parts[1]
+			errorDesc := strings.Join(parts[2:], " ")
+
+			// Validate that errorCodeStr is a numeric literal
+			errorCode, err := strconv.Atoi(errorCodeStr)
+			if err != nil {
+				return apiFunc, ErrInvalidErrorCode
 			}
-			resultDescParts := parts[3:]
-			resultDesc := strings.Join(resultDescParts, " ")
-			result := models.APIReturn{
-				Name:        resultName,
-				Type:        resultType,
-				Description: resultDesc,
-				Required:    true, // All return values are required
+
+			apiError := models.APIError{
+				Code:        errorCode,
+				Description: errorDesc,
 			}
-			apiFunc.Results = append(apiFunc.Results, result)
+			apiFunc.Errors = append(apiFunc.Errors, apiError)
 		}
+	}
+
+	// Enforce only one @Result annotation
+	if len(resultAnnotations) > 1 {
+		var positions []string
+		for _, comment := range resultAnnotations {
+			// Find the position of the comment in the file
+			pos := fset.Position(comment.Pos())
+			positions = append(positions, fmt.Sprintf("%s:%d", pos.Filename, pos.Line))
+		}
+		return apiFunc, fmt.Errorf("%w at %s", ErrMultipleResults, strings.Join(positions, ", "))
+	}
+
+	// Process @Result annotations
+	if len(resultAnnotations) == 1 {
+		line := strings.TrimSpace(resultAnnotations[0].Text)
+		parts := strings.Fields(line)
+		if len(parts) < 3 {
+			return apiFunc, errors.New("invalid @Result annotation")
+		}
+		resultName := parts[1]
+		resultType := parts[2]
+		// Check for 'optional' keyword in @Result
+		if len(parts) > 3 && strings.EqualFold(parts[3], "optional") {
+			return apiFunc, errors.New("@Result annotations should not be marked as optional")
+		}
+		resultDescParts := parts[3:]
+		resultDesc := strings.Join(resultDescParts, " ")
+		result := models.APIReturn{
+			Name:        resultName,
+			Type:        resultType,
+			Description: resultDesc,
+			Required:    true, // All return values are required
+		}
+		apiFunc.Results = append(apiFunc.Results, result)
 	}
 
 	// Validate required annotations
 	if apiFunc.Command == "" {
-		return apiFunc, errors.New("missing @Command annotation")
+		return apiFunc, ErrMissingCommand
 	}
 	if apiFunc.Description == "" {
-		return apiFunc, errors.New("missing @Description annotation")
+		return apiFunc, ErrMissingDescription
 	}
 
 	return apiFunc, nil

@@ -8,6 +8,16 @@ import (
 	"github.com/pablolagos/jdocgen/models"
 )
 
+// jsonRPCErrorTypes maps standard JSON-RPC 2.0 error codes to their descriptions.
+var jsonRPCErrorTypes = map[int]string{
+	-32700: "Parse error",
+	-32600: "Invalid Request",
+	-32601: "Method not found",
+	-32602: "Invalid params",
+	-32603: "Internal error",
+	// -32000 to -32099 are Server error, reserved for implementation-defined server-errors.
+}
+
 // GenerateMarkdown generates Markdown documentation from API functions and struct definitions.
 // It conditionally includes JSON-RPC 2.0 information based on the includeRFC flag.
 // Additionally, it appends a note about the documentation generator at the end.
@@ -187,6 +197,22 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 					sb.WriteString("\n")
 				}
 			}
+		}
+
+		// Errors
+		if len(fn.Errors) > 0 {
+			sb.WriteString("### Errors\n\n")
+			sb.WriteString("| Code and Type | Description |\n")
+			sb.WriteString("|---------------|-------------|\n")
+			for _, err := range fn.Errors {
+				errorType, exists := jsonRPCErrorTypes[err.Code]
+				if exists {
+					sb.WriteString(fmt.Sprintf("| `%d` %s | %s |\n", err.Code, errorType, err.Description))
+				} else {
+					sb.WriteString(fmt.Sprintf("| `%d` | %s |\n", err.Code, err.Description))
+				}
+			}
+			sb.WriteString("\n")
 		}
 
 		sb.WriteString("---\n\n")
