@@ -1,3 +1,4 @@
+// generator/generator.go
 package generator
 
 import (
@@ -168,9 +169,9 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 			}
 		}
 
-		// Return Values
+		// Result
 		if len(fn.Results) > 0 {
-			sb.WriteString("### Return Values\n\n")
+			sb.WriteString("### Result\n\n")
 			sb.WriteString("| Name | Type | Description |\n")
 			sb.WriteString("|------|------|-------------|\n")
 			for _, ret := range fn.Results {

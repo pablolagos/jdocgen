@@ -1,4 +1,3 @@
-// parser/parser.go
 package parser
 
 import (
@@ -24,6 +23,7 @@ var (
 	ErrMultipleResults    = errors.New("multiple @Result annotations found")
 	ErrInvalidErrorCode   = errors.New("@Error code must be a numeric literal")
 	ErrMissingDescription = errors.New("missing @Description annotation")
+	ErrMalformedResult    = errors.New("malformed @Result annotation. Expected format: @Result type description")
 )
 
 // ParseProject recursively parses all Go files in the project directory and its subdirectories.
@@ -278,13 +278,7 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 
 	// Enforce only one @Result annotation
 	if len(resultAnnotations) > 1 {
-		var positions []string
-		for _, comment := range resultAnnotations {
-			// Find the position of the comment in the file
-			pos := fset.Position(comment.Pos())
-			positions = append(positions, fmt.Sprintf("%s:%d", pos.Filename, pos.Line))
-		}
-		return apiFunc, fmt.Errorf("%w at %s", ErrMultipleResults, strings.Join(positions, ", "))
+		return apiFunc, fmt.Errorf("%w. JSON-RPC specification enforces a single @Result annotation per function.", ErrMultipleResults)
 	}
 
 	// Process @Result annotations
@@ -292,18 +286,14 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 		line := strings.TrimSpace(resultAnnotations[0].Text)
 		parts := strings.Fields(line)
 		if len(parts) < 3 {
-			return apiFunc, errors.New("invalid @Result annotation")
+			return apiFunc, ErrMalformedResult
 		}
-		resultName := parts[1]
-		resultType := parts[2]
-		// Check for 'optional' keyword in @Result
-		if len(parts) > 3 && strings.EqualFold(parts[3], "optional") {
-			return apiFunc, errors.New("@Result annotations should not be marked as optional")
-		}
-		resultDescParts := parts[3:]
+		// Enforce that the name is implicitly "result" by ensuring the first part after @Result is the type
+		resultType := parts[1]
+		resultDescParts := parts[2:]
 		resultDesc := strings.Join(resultDescParts, " ")
 		result := models.APIReturn{
-			Name:        resultName,
+			Name:        "result", // Name is always "result"
 			Type:        resultType,
 			Description: resultDesc,
 			Required:    true, // All return values are required
