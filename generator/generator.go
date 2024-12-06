@@ -3,6 +3,8 @@ package generator
 
 import (
 	"fmt"
+	"log"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -20,8 +22,6 @@ var jsonRPCErrorTypes = map[int]string{
 }
 
 // GenerateMarkdown generates Markdown documentation from API functions and struct definitions.
-// It conditionally includes JSON-RPC 2.0 information based on the includeRFC flag.
-// Additionally, it appends a note about the documentation generator at the end.
 func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo, includeRFC bool) string {
 	var sb strings.Builder
 
@@ -130,7 +130,7 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 
 	// Document API Functions
 	for _, fn := range functions {
-		// Remove backticks from function titles
+		// Function Title and Description
 		sb.WriteString(fmt.Sprintf("## %s\n\n", fn.Command))
 		sb.WriteString(fmt.Sprintf("%s\n\n", fn.Description))
 
@@ -144,27 +144,42 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 				if !param.Required {
 					requiredStatus = "*No*"
 				}
-				// Remove backticks from table cells and use bold for field names
 				sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %s |\n", param.Name, param.Type, param.Description, requiredStatus))
 			}
 			sb.WriteString("\n")
 
-			// Include struct definitions for parameters if applicable
+			// Inline Documentation for Parameter Structs
 			for _, param := range fn.Parameters {
 				baseType, pkg := resolveType(param.Type)
 				if baseType == "" {
 					continue
 				}
-				structDef, exists := findStruct(structs, baseType, pkg, fn.PackageName)
-				if exists {
-					sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", baseType))
-					sb.WriteString("| Field | Type | Description |\n")
-					sb.WriteString("|-------|------|-------------|\n")
-					for _, field := range structDef.Fields {
-						// Use bold for field names
-						sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", field.JSONName, field.Type, field.Description))
+				// Skip basic types
+				if isBasicType(baseType) {
+					continue
+				}
+
+				// Construct StructKey
+				var structKey models.StructKey
+				if pkg != "" {
+					structKey = models.StructKey{
+						Package: pkg,
+						Name:    baseType,
 					}
-					sb.WriteString("\n")
+				} else {
+					structKey = models.StructKey{
+						Package: fn.PackageName, // Local package
+						Name:    baseType,
+					}
+				}
+
+				// Check if struct exists
+				structDef, exists := structs[structKey]
+				if exists {
+					visited := make(map[models.StructKey]bool)
+					documentStruct(structKey, structDef, structs, &sb, visited)
+				} else {
+					log.Printf("Warning: Struct '%s' not found for parameter '%s'.", baseType, param.Name)
 				}
 			}
 		}
@@ -175,27 +190,42 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 			sb.WriteString("| Name | Type | Description |\n")
 			sb.WriteString("|------|------|-------------|\n")
 			for _, ret := range fn.Results {
-				// Remove backticks from table cells and use bold for field names
 				sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", ret.Name, ret.Type, ret.Description))
 			}
 			sb.WriteString("\n")
 
-			// Include struct definitions for return values if applicable
+			// Inline Documentation for Result Structs
 			for _, ret := range fn.Results {
 				baseType, pkg := resolveType(ret.Type)
 				if baseType == "" {
 					continue
 				}
-				structDef, exists := findStruct(structs, baseType, pkg, fn.PackageName)
-				if exists {
-					sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", baseType))
-					sb.WriteString("| Field | Type | Description |\n")
-					sb.WriteString("|-------|------|-------------|\n")
-					for _, field := range structDef.Fields {
-						// Use bold for field names
-						sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", field.JSONName, field.Type, field.Description))
+				// Skip basic types
+				if isBasicType(baseType) {
+					continue
+				}
+
+				// Construct StructKey
+				var structKey models.StructKey
+				if pkg != "" {
+					structKey = models.StructKey{
+						Package: pkg,
+						Name:    baseType,
 					}
-					sb.WriteString("\n")
+				} else {
+					structKey = models.StructKey{
+						Package: fn.PackageName, // Local package
+						Name:    baseType,
+					}
+				}
+
+				// Check if struct exists
+				structDef, exists := structs[structKey]
+				if exists {
+					visited := make(map[models.StructKey]bool)
+					documentStruct(structKey, structDef, structs, &sb, visited)
+				} else {
+					log.Printf("Warning: Struct '%s' not found for result '%s'.", baseType, ret.Name)
 				}
 			}
 		}
@@ -227,10 +257,12 @@ func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructK
 }
 
 // resolveType parses the type string to extract the base type and its package if present.
-// For example:
-// - "License" returns ("License", "")
-// - "jrpc.License" returns ("License", "jrpc")
+// It now handles composite types like slices and pointers by stripping their prefixes.
 func resolveType(typeStr string) (string, string) {
+	// Regular expression to match pointers and slices/arrays
+	re := regexp.MustCompile(`^[\*\[\]]+`)
+	typeStr = re.ReplaceAllString(typeStr, "")
+
 	if strings.Contains(typeStr, ".") {
 		parts := strings.Split(typeStr, ".")
 		if len(parts) == 2 {
@@ -270,4 +302,91 @@ func findStruct(structs map[models.StructKey]models.StructDefinition, name strin
 		}
 	}
 	return models.StructDefinition{}, false
+}
+
+// documentStruct writes the Markdown documentation for a struct and its nested structs.
+// It uses a 'visited' map to track already documented structs to prevent infinite recursion.
+func documentStruct(structKey models.StructKey, structDef models.StructDefinition, structs map[models.StructKey]models.StructDefinition, sb *strings.Builder, visited map[models.StructKey]bool) {
+	// Check if already visited
+	if visited[structKey] {
+		return
+	}
+	visited[structKey] = true
+
+	// Log the struct being documented
+	log.Printf("Documenting Struct: %s.%s", structKey.Package, structKey.Name)
+
+	// Write Struct Description
+	sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", structDef.Name))
+	if structDef.Description != "" {
+		sb.WriteString(fmt.Sprintf("%s\n\n", structDef.Description))
+	}
+
+	// Write Fields Table
+	sb.WriteString("| Field | Type | Description |\n")
+	sb.WriteString("|-------|------|-------------|\n")
+	for _, field := range structDef.Fields {
+		sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", field.JSONName, field.Type, field.Description))
+
+		// Resolve the field type
+		baseType, pkg := resolveType(field.Type)
+		if baseType == "" {
+			continue
+		}
+
+		// Skip basic types
+		if isBasicType(baseType) {
+			continue
+		}
+
+		// Construct StructKey for nested struct
+		var nestedKey models.StructKey
+		if pkg != "" {
+			nestedKey = models.StructKey{
+				Package: pkg,
+				Name:    baseType,
+			}
+		} else {
+			// Assume same package as parent
+			nestedKey = models.StructKey{
+				Package: structKey.Package,
+				Name:    baseType,
+			}
+		}
+
+		// Check if the nested struct exists
+		nestedStructDef, exists := structs[nestedKey]
+		if exists {
+			// Recursively document the nested struct
+			documentStruct(nestedKey, nestedStructDef, structs, sb, visited)
+		} else {
+			// Log a warning if nested struct definition is missing
+			log.Printf("Warning: Struct '%s' not found for field '%s'.", baseType, field.Name)
+		}
+	}
+	sb.WriteString("\n")
+}
+
+// isBasicType checks if a given type is a Go basic type.
+func isBasicType(typeName string) bool {
+	basicTypes := map[string]bool{
+		"string":  true,
+		"bool":    true,
+		"int":     true,
+		"int8":    true,
+		"int16":   true,
+		"int32":   true,
+		"int64":   true,
+		"uint":    true,
+		"uint8":   true,
+		"uint16":  true,
+		"uint32":  true,
+		"uint64":  true,
+		"float32": true,
+		"float64": true,
+		"byte":    true,
+		"rune":    true,
+		// Add more basic types as needed
+	}
+	return basicTypes[typeName]
 }

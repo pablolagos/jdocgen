@@ -1,3 +1,4 @@
+// parser/parser.go
 package parser
 
 import (
@@ -37,12 +38,15 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 	// Initialize a new FileSet
 	fset := token.NewFileSet()
 
+	// To prevent infinite recursion in case of cyclic struct references
+	processedStructs := make(map[models.StructKey]bool)
+
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip vendor, hidden directories, and test files
+		// Skip hidden directories and test files
 		if info.IsDir() {
 			if info.Name() == "vendor" || strings.HasPrefix(info.Name(), ".") {
 				return filepath.SkipDir
@@ -94,6 +98,8 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 				structDef := models.StructDefinition{
 					Name: typeSpec.Name.Name,
 				}
+				structDef.Description = extractStructDescription(genDecl.Doc)
+
 				for _, field := range structType.Fields.List {
 					fieldName := ""
 					if len(field.Names) > 0 {
@@ -124,6 +130,39 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 						JSONName:    jsonName,
 					}
 					structDef.Fields = append(structDef.Fields, structField)
+
+					// If the field type is a struct, attempt to parse it recursively
+					baseType, pkg := resolveType(fieldType)
+					if baseType == "" {
+						continue
+					}
+					// Skip basic types
+					if isBasicType(baseType) {
+						continue
+					}
+					// Construct StructKey
+					var structKey models.StructKey
+					if pkg != "" {
+						structKey = models.StructKey{
+							Package: pkg,
+							Name:    baseType,
+						}
+					} else {
+						structKey = models.StructKey{
+							Package: currentPackage,
+							Name:    baseType,
+						}
+					}
+					// Avoid re-processing structs
+					if _, exists := structDefinitions[structKey]; exists || processedStructs[structKey] {
+						continue
+					}
+					// Attempt to find and parse the nested struct
+					nestedStructDef, err := findAndParseStruct(rootDir, structKey, fset, importAliases, structDefinitions, processedStructs)
+					if err == nil && nestedStructDef.Name != "" {
+						structDefinitions[structKey] = nestedStructDef
+						processedStructs[structKey] = true
+					}
 				}
 
 				key := models.StructKey{
@@ -142,7 +181,7 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 			}
 
 			// Extract API functions
-			apiFunc, err := parseFunction(fn, currentPackage, importAliases, path, fset)
+			apiFunc, err := parseFunction(fn, currentPackage, importAliases, path, fset, structDefinitions, processedStructs, rootDir)
 			if err == nil {
 				apiFunctions = append(apiFunctions, apiFunc)
 			} else {
@@ -181,6 +220,182 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 	return apiFunctions, structDefinitions, projectInfo, nil
 }
 
+// findAndParseStruct attempts to locate and parse a struct definition based on StructKey.
+// It searches within the specified root directory and its subdirectories.
+// Now accepts structDefinitions and processedStructs as parameters to store results.
+func findAndParseStruct(rootDir string, key models.StructKey, fset *token.FileSet, importAliases map[string]string, structDefinitions map[models.StructKey]models.StructDefinition, processedStructs map[models.StructKey]bool) (models.StructDefinition, error) {
+	var structDef models.StructDefinition
+
+	// Construct the expected file path based on package and struct name
+	var searchPackage string
+	if key.Package != "" {
+		searchPackage = key.Package
+	} else {
+		searchPackage = "" // Current package
+	}
+
+	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Only parse .go files excluding test files
+		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		// Parse the Go file
+		fileAst, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		if err != nil {
+			return nil // Skip files that can't be parsed
+		}
+
+		currentPackage := fileAst.Name.Name
+
+		// Check if the file belongs to the desired package
+		if searchPackage != "" && currentPackage != searchPackage {
+			return nil
+		}
+
+		// Look for the struct
+		for _, decl := range fileAst.Decls {
+			genDecl, isGen := decl.(*ast.GenDecl)
+			if !isGen || genDecl.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range genDecl.Specs {
+				typeSpec, isType := spec.(*ast.TypeSpec)
+				if !isType {
+					continue
+				}
+				if typeSpec.Name.Name != key.Name {
+					continue
+				}
+				structType, isStruct := typeSpec.Type.(*ast.StructType)
+				if !isStruct {
+					continue
+				}
+
+				// Initialize StructDefinition
+				structDef = models.StructDefinition{
+					Name: typeSpec.Name.Name,
+				}
+				structDef.Description = extractStructDescription(genDecl.Doc)
+
+				// Mark struct as processed to prevent recursion
+				processedStructs[key] = true
+				structDefinitions[key] = structDef
+
+				for _, field := range structType.Fields.List {
+					fieldName := ""
+					if len(field.Names) > 0 {
+						fieldName = field.Names[0].Name
+					} else {
+						// Embedded field
+						fieldName = exprToString(field.Type)
+					}
+
+					jsonName := fieldName
+					if field.Tag != nil {
+						tag := field.Tag.Value
+						// Extract json tag
+						re := regexp.MustCompile(`json:"([^"]+)"`)
+						matches := re.FindStringSubmatch(tag)
+						if len(matches) > 1 && matches[1] != "-" {
+							jsonName = matches[1]
+						}
+					}
+
+					fieldType := exprToString(field.Type)
+					fieldDesc := extractFieldDescription(field.Doc, field.Comment)
+
+					structField := models.StructField{
+						Name:        fieldName,
+						Type:        fieldType,
+						Description: fieldDesc,
+						JSONName:    jsonName,
+					}
+					structDef.Fields = append(structDef.Fields, structField)
+
+					// If the field type is a struct, attempt to parse it recursively
+					baseType, pkg := resolveType(fieldType)
+					if baseType == "" {
+						continue
+					}
+					// Skip basic types
+					if isBasicType(baseType) {
+						continue
+					}
+					// Construct StructKey
+					var structKey models.StructKey
+					if pkg != "" {
+						structKey = models.StructKey{
+							Package: pkg,
+							Name:    baseType,
+						}
+					} else {
+						structKey = models.StructKey{
+							Package: currentPackage,
+							Name:    baseType,
+						}
+					}
+					// Avoid re-processing structs
+					if _, exists := structDefinitions[structKey]; exists || processedStructs[structKey] {
+						continue
+					}
+					// Attempt to find and parse the nested struct
+					nestedStructDef, err := findAndParseStruct(rootDir, structKey, fset, importAliases, structDefinitions, processedStructs)
+					if err == nil && nestedStructDef.Name != "" {
+						structDefinitions[structKey] = nestedStructDef
+					} else {
+						// Log a warning if the struct definition couldn't be found
+						log.Printf("Warning: Could not find struct definition for '%s' in package '%s'. Detailed field information will not be available.", baseType, pkg)
+					}
+				}
+
+				return errors.New("struct found and parsed") // Stop searching
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil && err.Error() == "struct found and parsed" {
+		return structDef, nil
+	}
+
+	return models.StructDefinition{}, errors.New("struct not found")
+}
+
+// isBasicType checks if a given type is a Go basic type.
+func isBasicType(typeName string) bool {
+	basicTypes := map[string]bool{
+		"string":  true,
+		"bool":    true,
+		"int":     true,
+		"int8":    true,
+		"int16":   true,
+		"int32":   true,
+		"int64":   true,
+		"uint":    true,
+		"uint8":   true,
+		"uint16":  true,
+		"uint32":  true,
+		"uint64":  true,
+		"float32": true,
+		"float64": true,
+		"byte":    true,
+		"rune":    true,
+		// Add more basic types as needed
+	}
+	return basicTypes[typeName]
+}
+
 // extractImportAliases extracts a map of alias to package name from the file's import declarations.
 func extractImportAliases(fileAst *ast.File) map[string]string {
 	importAliases := make(map[string]string)
@@ -205,7 +420,7 @@ func extractImportAliases(fileAst *ast.File) map[string]string {
 // If multiple @Result annotations are found, it returns ErrMultipleResults with details.
 // If @Command is missing, it returns ErrMissingCommand.
 // Other annotation issues return corresponding errors.
-func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[string]string, fileName string, fset *token.FileSet) (models.APIFunction, error) {
+func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[string]string, fileName string, fset *token.FileSet, structDefinitions map[models.StructKey]models.StructDefinition, processedStructs map[models.StructKey]bool, rootDir string) (models.APIFunction, error) {
 	apiFunc := models.APIFunction{
 		ImportAliases: importAliases,
 		PackageName:   currentPackage,
@@ -299,6 +514,35 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 			Required:    true, // All return values are required
 		}
 		apiFunc.Results = append(apiFunc.Results, result)
+
+		// Check if the result type is a struct that needs to be documented
+		baseType, pkg := resolveType(resultType)
+		if baseType != "" && !isBasicType(baseType) {
+			// Construct StructKey
+			var structKey models.StructKey
+			if pkg != "" {
+				structKey = models.StructKey{
+					Package: pkg,
+					Name:    baseType,
+				}
+			} else {
+				structKey = models.StructKey{
+					Package: currentPackage,
+					Name:    baseType,
+				}
+			}
+			// If not already processed, attempt to find and parse the struct
+			if _, exists := structDefinitions[structKey]; !exists && !processedStructs[structKey] {
+				nestedStructDef, err := findAndParseStruct(rootDir, structKey, fset, importAliases, structDefinitions, processedStructs)
+				if err == nil && nestedStructDef.Name != "" {
+					structDefinitions[structKey] = nestedStructDef
+					processedStructs[structKey] = true
+				} else {
+					// Log a warning if the struct definition couldn't be found
+					log.Printf("Warning: Could not find struct definition for '%s' in package '%s'. Detailed field information will not be available.", baseType, pkg)
+				}
+			}
+		}
 	}
 
 	// Validate required annotations
@@ -310,6 +554,24 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 	}
 
 	return apiFunc, nil
+}
+
+// extractStructDescription extracts the description of a struct from its comment group.
+func extractStructDescription(cg *ast.CommentGroup) string {
+	if cg == nil {
+		return ""
+	}
+	var desc []string
+	scanner := bufio.NewScanner(strings.NewReader(cg.Text()))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimPrefix(line, "//")
+		line = strings.TrimSpace(line)
+		if line != "" {
+			desc = append(desc, line)
+		}
+	}
+	return strings.Join(desc, " ")
 }
 
 // parseGlobalTags parses global tags from a CommentGroup (file-level or function-level).
@@ -444,4 +706,20 @@ func exprToString(expr ast.Expr) string {
 	default:
 		return ""
 	}
+}
+
+// resolveType parses the type string to extract the base type and its package if present.
+// It now handles composite types like slices and pointers by stripping their prefixes.
+func resolveType(typeStr string) (string, string) {
+	// Regular expression to match pointers and slices/arrays
+	re := regexp.MustCompile(`^[\*\[\]]+`)
+	typeStr = re.ReplaceAllString(typeStr, "")
+
+	if strings.Contains(typeStr, ".") {
+		parts := strings.Split(typeStr, ".")
+		if len(parts) == 2 {
+			return parts[1], parts[0]
+		}
+	}
+	return typeStr, ""
 }
