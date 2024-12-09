@@ -18,8 +18,7 @@ import (
 // includeRFC determines whether to include JSON-RPC 2.0 specification information.
 func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo, outFile string, includeRFC bool) error {
 	// Step 1: Collect the subset of structs to document
-	// Note: structsToDocument was previously declared here but is not used in the current implementation.
-	// Therefore, it's removed to prevent compilation errors.
+	structsToDocument := collectStructsToDocument(apiFunctions, structDefinitions)
 
 	// Step 2: Create the output file
 	file, err := os.Create(outFile)
@@ -103,51 +102,97 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 			// Include detailed struct definitions for result types that are structs
 			for _, result := range apiFunc.Results {
 				// Check if the result type is a struct (excluding basic types)
-				baseType, _ := utils.ParseGenericType(result.Type)
+				baseType, typeArgs := utils.ParseGenericType(result.Type)
 				if !utils.IsBasicType(baseType) {
-					// Attempt to resolve the struct
-					// For generic types, handle accordingly
-					baseTypeName, _ := utils.ParseGenericType(result.Type)
-					structKey := models.StructKey{
-						Package: "", // To be determined
-						Name:    baseTypeName,
-					}
-
-					// Find the struct in structDefinitions
-					var found bool
-					var resolvedKey models.StructKey
-					for key := range structDefinitions {
-						if key.Name == structKey.Name {
-							resolvedKey = key
-							found = true
-							break
+					// Determine if it's a generic instantiation
+					if len(typeArgs) > 0 {
+						// It's a generic type instantiation, e.g., Pagination[ReportItem]
+						concreteType := result.Type
+						structKey := models.StructKey{
+							Package: "", // To be determined
+							Name:    concreteType,
 						}
-					}
 
-					if found {
-						structDef := structDefinitions[resolvedKey]
-						// Write struct details
-						fmt.Fprintf(writer, "#### %s.%s\n\n", resolvedKey.Package, structDef.Name)
-						if structDef.Description != "" {
-							fmt.Fprintf(writer, "%s\n\n", structDef.Description)
-						}
-						if len(structDef.Fields) > 0 {
-							fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
-							fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
-							for _, field := range structDef.Fields {
-								description := strings.ReplaceAll(field.Description, "|", "\\|")
-								jsonName := field.JSONName
-								if jsonName == "-" {
-									jsonName = "omitempty"
-								}
-								fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
+						// Find the concrete struct in structDefinitions
+						var found bool
+						var resolvedKey models.StructKey
+						for key := range structDefinitions {
+							if key.Name == structKey.Name && (structKey.Package == "" || key.Package == structKey.Package) {
+								resolvedKey = key
+								found = true
+								break
 							}
-							fmt.Fprintf(writer, "\n")
+						}
+
+						if found {
+							structDef := structDefinitions[resolvedKey]
+							// Write struct details
+							fmt.Fprintf(writer, "#### %s.%s\n\n", resolvedKey.Package, structDef.Name)
+							if structDef.Description != "" {
+								fmt.Fprintf(writer, "%s\n\n", structDef.Description)
+							}
+							if len(structDef.Fields) > 0 {
+								fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
+								fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
+								for _, field := range structDef.Fields {
+									description := strings.ReplaceAll(field.Description, "|", "\\|")
+									jsonName := field.JSONName
+									if jsonName == "-" {
+										jsonName = "omitempty"
+									}
+									fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
+								}
+								fmt.Fprintf(writer, "\n")
+							} else {
+								fmt.Fprintf(writer, "_No fields defined._\n\n")
+							}
 						} else {
-							fmt.Fprintf(writer, "_No fields defined._\n\n")
+							log.Printf("Warning: Struct '%s' not found for result '%s'", concreteType, result.Name)
 						}
 					} else {
-						log.Printf("Warning: Struct '%s' not found for result '%s'", baseTypeName, result.Name)
+						// Non-generic struct
+						concreteType := baseType
+						structKey := models.StructKey{
+							Package: "", // To be determined
+							Name:    concreteType,
+						}
+
+						// Find the struct in structDefinitions
+						var found bool
+						var resolvedKey models.StructKey
+						for key := range structDefinitions {
+							if key.Name == structKey.Name && (structKey.Package == "" || key.Package == structKey.Package) {
+								resolvedKey = key
+								found = true
+								break
+							}
+						}
+
+						if found {
+							structDef := structDefinitions[resolvedKey]
+							// Write struct details
+							fmt.Fprintf(writer, "#### %s.%s\n\n", resolvedKey.Package, structDef.Name)
+							if structDef.Description != "" {
+								fmt.Fprintf(writer, "%s\n\n", structDef.Description)
+							}
+							if len(structDef.Fields) > 0 {
+								fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
+								fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
+								for _, field := range structDef.Fields {
+									description := strings.ReplaceAll(field.Description, "|", "\\|")
+									jsonName := field.JSONName
+									if jsonName == "-" {
+										jsonName = "omitempty"
+									}
+									fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
+								}
+								fmt.Fprintf(writer, "\n")
+							} else {
+								fmt.Fprintf(writer, "_No fields defined._\n\n")
+							}
+						} else {
+							log.Printf("Warning: Struct '%s' not found for result '%s'", concreteType, result.Name)
+						}
 					}
 				}
 			}
@@ -168,6 +213,57 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 		fmt.Fprintf(writer, "---\n\n")
 	}
 
+	// Step 4: Document all structs collected in structsToDocument
+	if len(structsToDocument) > 0 {
+		fmt.Fprintf(writer, "## Struct Definitions\n\n")
+		// Sort structs for consistent order
+		sortedKeys := make([]models.StructKey, 0, len(structsToDocument))
+		for key := range structsToDocument {
+			sortedKeys = append(sortedKeys, key)
+		}
+		sort.Slice(sortedKeys, func(i, j int) bool {
+			if sortedKeys[i].Package == sortedKeys[j].Package {
+				return sortedKeys[i].Name < sortedKeys[j].Name
+			}
+			return sortedKeys[i].Package < sortedKeys[j].Package
+		})
+
+		for _, key := range sortedKeys {
+			structDef, exists := structDefinitions[key]
+			if !exists {
+				log.Printf("Warning: Struct '%s.%s' not found in definitions.", key.Package, key.Name)
+				continue
+			}
+			log.Printf("Documenting struct: Package='%s', Name='%s'", key.Package, key.Name)
+
+			// Write struct header
+			fmt.Fprintf(writer, "### %s.%s\n\n", key.Package, key.Name)
+
+			// Write description
+			if structDef.Description != "" {
+				fmt.Fprintf(writer, "%s\n\n", structDef.Description)
+			}
+
+			// Write fields table
+			if len(structDef.Fields) > 0 {
+				fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
+				fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
+				for _, field := range structDef.Fields {
+					// Escape pipe characters in descriptions to prevent markdown table issues
+					description := strings.ReplaceAll(field.Description, "|", "\\|")
+					jsonName := field.JSONName
+					if jsonName == "-" {
+						jsonName = "omitempty"
+					}
+					fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
+				}
+				fmt.Fprintf(writer, "\n")
+			} else {
+				fmt.Fprintf(writer, "_No fields defined._\n\n")
+			}
+		}
+	}
+
 	// Flush the buffer to ensure all content is written
 	if err := writer.Flush(); err != nil {
 		return fmt.Errorf("failed to write to output file: %v", err)
@@ -180,9 +276,6 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 // collectStructsToDocument determines which structs should be documented based on API functions.
 // It includes all structs referenced by API functions' Parameters and Results, recursively.
 func collectStructsToDocument(apiFunctions []models.APIFunction, structDefinitions map[models.StructKey]models.StructDefinition) map[models.StructKey]struct{} {
-	// Previously, structsToDocument was used here, but since it's not utilized in GenerateDocumentation,
-	// this function can be removed or left as is if you plan to use it in the future.
-	// For now, it's retained but not used to avoid affecting other parts of the code.
 	structsToDocument := make(map[models.StructKey]struct{})
 	visited := make(map[models.StructKey]struct{})
 
