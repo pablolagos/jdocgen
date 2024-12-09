@@ -357,6 +357,12 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 				Description: errorDesc,
 			}
 			apiFunc.Errors = append(apiFunc.Errors, apiError)
+		case "@Additional":
+			if len(parts) < 2 {
+				return apiFunc, errors.New("invalid @Additional annotation. Expected format: @Additional type")
+			}
+			additionalType := parts[1]
+			apiFunc.AdditionalStructs = append(apiFunc.AdditionalStructs, additionalType)
 		}
 	}
 

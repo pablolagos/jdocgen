@@ -31,13 +31,14 @@ type TypeParam struct {
 
 // APIFunction represents an API function with its annotations.
 type APIFunction struct {
-	Command       string
-	Description   string
-	Parameters    []APIParameter
-	Results       []APIReturn
-	Errors        []APIError
-	ImportAliases map[string]string
-	PackageName   string
+	Command           string
+	Description       string
+	Parameters        []APIParameter
+	Results           []APIReturn
+	Errors            []APIError
+	ImportAliases     map[string]string
+	PackageName       string
+	AdditionalStructs []string
 }
 
 // APIParameter represents a parameter of an API function.

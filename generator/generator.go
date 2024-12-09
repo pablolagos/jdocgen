@@ -183,6 +183,25 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 			}
 		}
 
+		// Add Additional Structs section
+		if len(apiFunc.AdditionalStructs) > 0 {
+			fmt.Fprintf(writer, "### Additional Structs:\n\n")
+			visited := make(map[models.StructKey]bool) // Reset visited map for every endpoint
+			for _, additional := range apiFunc.AdditionalStructs {
+				baseType, _ := utils.ParseGenericType(additional)
+				if !utils.IsBasicType(baseType) {
+					// Resolve the struct key
+					for key := range structDefinitions {
+						if key.Name == baseType {
+							// Print the struct inline
+							printStructDefinitionInline(writer, key, structDefinitions, visited)
+							break
+						}
+					}
+				}
+			}
+		}
+
 		// Errors section
 		if len(apiFunc.Errors) > 0 {
 			fmt.Fprintf(writer, "### Errors:\n\n")

@@ -1,152 +1,116 @@
-# jDocGen: JSON-RPC API Documentation Generator
-
-**jDocGen** is a Go-based tool to generate Markdown documentation for JSON-RPC APIs. It parses Go source files to extract annotated functions and structures, creating a comprehensive API reference, including generic structs and their instantiations.
+Here’s an updated `README.md` for your project:
 
 ---
 
+# jdocgen
+
+`jdocgen` is a Go-based tool for generating Markdown documentation for JSON-RPC 2.0 APIs. It parses your Go code to extract function annotations and generates comprehensive documentation, including parameter details, results, errors, and inline struct definitions.
+
 ## Installation
 
-To install `jDocGen`, run the following command:
+To install `jdocgen`, run:
 
 ```bash
 go install github.com/pablolagos/jdocgen@latest
 ```
 
-This will download and install the tool into your `$GOPATH/bin`.
-
----
-
 ## Usage
 
-Run `jDocGen` from your project directory to generate the documentation:
+Run `jdocgen` from your project directory to generate API documentation:
 
 ```bash
 jdocgen
 ```
 
-### Flags
+## Flags
 
-| Flag        | Default                | Description                                                                 |
-|-------------|------------------------|-----------------------------------------------------------------------------|
-| `-output`   | `API_Documentation.md`| Path to the output Markdown file.                                           |
-| `-dir`      | `.`                    | Directory to parse for Go source files.                                     |
-| `-omit-rfc` | `false`                | Omit the JSON-RPC 2.0 specification introduction in the documentation.      |
-
----
-
-## How to Use Annotations
-
-To document your API endpoints and related structures, use the following annotations in your code.
-
-### 1. **Project-Level Tags**
-
-Annotate your project in a Go file to provide metadata for the generated documentation.
-
-Example:
-
-```go
-// @Project My API Documentation
-// @Version 1.0.0
-// @Author Jane Doe
-// @Description This is the API documentation for My JSON-RPC service.
-```
-
-### 2. **Endpoint-Level Tags**
-
-Use these tags in your handler functions to describe API endpoints:
-
-| Tag          | Description                                                                                   |
-|--------------|-----------------------------------------------------------------------------------------------|
-| `@Command`   | The unique name of the command (method) in the JSON-RPC API.                                  |
-| `@Description` | A short description of what the command does.                                                |
-| `@Parameter` | Describes a parameter for the function in the format: `name type description [optional flag]`.|
-| `@Result`    | Describes the return value of the function in the format: `type description`.                 |
-
-Example:
-
-```go
-// GetAllMetrics returns statistics for the last 30 days.
-//
-// @Command stats.GetAllMetrics
-// @Description Get statistics for the last 30 days.
-// @Parameter tz string Timezone for the stats. [optional]
-// @Result Stats Statistics information.
-func (h *Handlers) GetAllMetrics(ctx *jrpc.Context) error {
-	// Implementation here...
-}
-```
-
-### 3. **Struct-Level Tags**
-
-For structs, provide a description to include them in the documentation. Generic structs are supported and expanded when referenced by endpoints.
-
-Example:
-
-```go
-// Pagination represents a paginated response.
-// @description Pagination is a generic struct for paginated data.
-type Pagination[T any] struct {
-	Data       []T `json:"data"`        // Data for the current page
-	Page       int `json:"page"`        // Current page number
-	PageSize   int `json:"page_size"`   // Number of items per page
-	TotalPages int `json:"total_pages"` // Total number of pages
-	TotalItems int `json:"total_items"` // Total number of items available
-}
-```
+| Flag          | Description                                      | Default                 |
+|---------------|--------------------------------------------------|-------------------------|
+| `-dir`        | Directory to parse for Go source files.          | `.` (current directory) |
+| `-output`     | Path to the output Markdown file.                | `API_Documentation.md`  |
+| `-omit-rfc`   | Omit JSON-RPC 2.0 specification from the output. | `false`                 |
 
 ---
 
-## Example Output
+## Project Annotations
 
-### Endpoint Documentation
+Include project-level annotations in your source code comments to provide metadata about the API:
+
+| Annotation     | Description                       | Example                                    |
+|----------------|-----------------------------------|--------------------------------------------|
+| `@Title`       | Title of the project.             | `@Title My API`                            |
+| `@Version`     | Version of the project.           | `@Version 1.0.0`                           |
+| `@Description` | Brief description of the project. | `@Description This API provides...`        |
+| `@Author`      | Author of the project.            | `@Author John Doe`                         |
+| `@License`     | License for the project.          | `@License MIT`                             |
+| `@Contact`     | Contact information.              | `@Contact support@example.com`             |
+| `@Terms`       | Link to terms and conditions.     | `@Terms https://example.com/terms`         |
+| `@Repository`  | Repository URL for the project.   | `@Repository https://github.com/user/repo` |
+| `@Tags`        | Tags associated with the project. | `@Tags jsonrpc, api, example`              |
+
+---
+
+## Function Annotations
+
+Document your API endpoints by adding annotations to function comments:
+
+| Annotation     | Description                                                                            | Example                                    |
+|----------------|----------------------------------------------------------------------------------------|--------------------------------------------|
+| `@Command`     | Command name for the JSON-RPC method.                                                  | `@Command stats.GetAllMetrics`             |
+| `@Description` | Brief description of the endpoint.                                                     | `@Description Get statistics for 30 days.` |
+| `@Parameter`   | Parameters accepted by the method. Format: `@Parameter <name> <type> "<description>"`. | `@Parameter tz string "Timezone."`         |
+| `@Result`      | Return type and description. Format: `@Result <type> "<description>"`.                 | `@Result Stats "Statistics data."`         |
+| `@Error`       | Errors returned by the method. Format: `@Error <code> "<description>"`.                | `@Error 400 "Invalid timezone."`           |
+| `@Additional`  | Additional structs related to the endpoint. Format: `@Additional <struct>`             | `@Additional User`                         |
+
+---
+
+## Output Format
+
+The generated Markdown includes:
+
+1. **API Command Details**: Command name, description, parameters, results, and errors.
+2. **JSON-RPC 2.0 Specification** (optional): Overview of the JSON-RPC protocol.
+3. **Inline Struct Definitions**: Detailed documentation for all referenced structs.
+
+Example output for a command:
 
 ```markdown
 ## stats.GetAllMetrics
 
-Get statistics for the last 30 days.
+Get statistics information for the last 30 days.
 
 ### Parameters:
 
-| Name | Type   | Description              | Required |
-|------|--------|--------------------------|----------|
-| tz   | string | Timezone for the stats.  | Optional |
+| Name | Type   | Description | Required |
+|------|--------|-------------|----------|
+| tz   | string | Timezone.   | Yes      |
 
 ### Results:
 
-| Name    | Type | Description           |
-|---------|------|-----------------------|
-| result  | Stats| Statistics information|
-
----
-
-### Struct Documentation
+| Name   | Type  | Description               |
+|--------|-------|---------------------------|
+| result | Stats | Statistics information.   |
 
 #### Stats
 
-| Name                | Type   | Description |
-|---------------------|--------|-------------|
-| TotalScannedFiles   | []int  | Total files scanned in the last 30 days. |
-| TotalInfectedFiles  | []int  | Total infected files in the last 30 days.|
-| QuarantinedFiles    | []int  | Files quarantined in the last 30 days.   |
+| Name               | Type  | Description                     | JSON Name |
+|--------------------|-------|---------------------------------|-----------|
+| TotalScannedFiles  | []int | Total scanned files in 30 days. | total_scanned_files |
+| TotalInfectedFiles | []int | Total infected files in 30 days.| total_infected_files |
+
+---
+
+### Additional Structs:
+
+#### User
+
+| Name         | Type    | Description | JSON Name |
+|--------------|---------|-------------|-----------|
+| UserName     | string  | User name.  | username  |
+| Email        | string  | User email. | email     |
 ```
 
 ---
 
-## Features
-
-- **Support for Generics**: Expands and documents generic structs with their instantiated types.
-- **Detailed Endpoint Information**: Automatically includes parameters, results, and referenced structs.
-- **Project Metadata**: Allows easy inclusion of project-level information such as version, author, and description.
-- **JSON-RPC Specification**: Optionally includes an overview of JSON-RPC 2.0.
-
----
-
-## Contributing
-
-Contributions are welcome! If you encounter any issues or have suggestions, please [open an issue](https://github.com/pablolagos/jdocgen/issues) or submit a pull request.
-
----
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](https://github.com/pablolagos/jdocgen/blob/main/LICENSE) file for details.
+Feel free to adapt the examples and descriptions to your specific use case!
