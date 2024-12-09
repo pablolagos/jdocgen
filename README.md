@@ -1,7 +1,3 @@
-Here’s an updated `README.md` for your project:
-
----
-
 # jdocgen
 
 `jdocgen` is a Go-based tool for generating Markdown documentation for JSON-RPC 2.0 APIs. It parses your Go code to extract function annotations and generates comprehensive documentation, including parameter details, results, errors, and inline struct definitions.
@@ -111,6 +107,4 @@ Get statistics information for the last 30 days.
 | Email        | string  | User email. | email     |
 ```
 
----
 
-Feel free to adapt the examples and descriptions to your specific use case!
