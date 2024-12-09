@@ -13,9 +13,6 @@ import (
 	"github.com/pablolagos/jdocgen/utils"
 )
 
-// GenerateDocumentation generates markdown documentation for API endpoints.
-// Now, we print structs inline, immediately after referencing them in the results section.
-// If a struct references other structs, we document those inline as well.
 func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo, outFile string, includeRFC bool) error {
 	file, err := os.Create(outFile)
 	if err != nil {
@@ -32,7 +29,6 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 		fmt.Fprintf(writer, "%s\n\n", projectInfo.Description)
 	}
 
-	// Optional: Add other project info like Author, License, etc.
 	if projectInfo.Author != "" {
 		fmt.Fprintf(writer, "**Author:** %s\n\n", projectInfo.Author)
 	}
@@ -43,7 +39,62 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 		fmt.Fprintf(writer, "**Tags:** %s\n\n", strings.Join(projectInfo.Tags, ", "))
 	}
 
-	// Include JSON-RPC 2.0 specification information if not omitted
+	if includeRFC {
+		fmt.Fprintf(writer, "## JSON-RPC 2.0 Specification\n\n")
+		fmt.Fprintf(writer, "This API adheres to the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification).\n\n")
+		fmt.Fprintf(writer, "**Requests:**\n\n")
+		fmt.Fprintf(writer, "Clients must send a JSON object containing the following fields:\n")
+		fmt.Fprintf(writer, "- `jsonrpc`: Must be the string \"2.0\".\n")
+		fmt.Fprintf(writer, "- `method`: The name of the method to invoke.\n")
+		fmt.Fprintf(writer, "- `params`: (Optional) A structured value containing method parameters.\n")
+		fmt.Fprintf(writer, "- `id`: An identifier to correlate the request with the response.\n\n")
+
+		fmt.Fprintf(writer, "**Responses:**\n\n")
+		fmt.Fprintf(writer, "The server responds with a JSON object containing one of these fields:\n")
+		fmt.Fprintf(writer, "- `result`: The data returned by the method if successful.\n")
+		fmt.Fprintf(writer, "- `error`: An error object with code, message, and optional data.\n")
+		fmt.Fprintf(writer, "- `id`: Matches the request identifier.\n\n")
+
+		fmt.Fprintf(writer, "**Example Request:**\n\n")
+		fmt.Fprintf(writer, "```json\n")
+		fmt.Fprintf(writer, "{\n")
+		fmt.Fprintf(writer, "  \"jsonrpc\": \"2.0\",\n")
+		fmt.Fprintf(writer, "  \"method\": \"stats.GetAllMetrics\",\n")
+		fmt.Fprintf(writer, "  \"params\": { \"tz\": \"UTC\" },\n")
+		fmt.Fprintf(writer, "  \"id\": 1\n")
+		fmt.Fprintf(writer, "}\n")
+		fmt.Fprintf(writer, "```\n\n")
+
+		fmt.Fprintf(writer, "**Example Response:**\n\n")
+		fmt.Fprintf(writer, "```json\n")
+		fmt.Fprintf(writer, "{\n")
+		fmt.Fprintf(writer, "  \"jsonrpc\": \"2.0\",\n")
+		fmt.Fprintf(writer, "  \"result\": {\n")
+		fmt.Fprintf(writer, "    \"TotalScannedFiles\": [100, 200],\n")
+		fmt.Fprintf(writer, "    \"TotalInfectedFiles\": [5, 10]\n")
+		fmt.Fprintf(writer, "  },\n")
+		fmt.Fprintf(writer, "  \"id\": 1\n")
+		fmt.Fprintf(writer, "}\n")
+		fmt.Fprintf(writer, "```\n\n")
+	}
+
+	// Write Project Info at the top
+	fmt.Fprintf(writer, "# %s\n\n", projectInfo.Title)
+	fmt.Fprintf(writer, "Version: %s\n\n", projectInfo.Version)
+	if projectInfo.Description != "" {
+		fmt.Fprintf(writer, "%s\n\n", projectInfo.Description)
+	}
+
+	if projectInfo.Author != "" {
+		fmt.Fprintf(writer, "**Author:** %s\n\n", projectInfo.Author)
+	}
+	if projectInfo.License != "" {
+		fmt.Fprintf(writer, "**License:** %s\n\n", projectInfo.License)
+	}
+	if len(projectInfo.Tags) > 0 {
+		fmt.Fprintf(writer, "**Tags:** %s\n\n", strings.Join(projectInfo.Tags, ", "))
+	}
+
 	if includeRFC {
 		fmt.Fprintf(writer, "## JSON-RPC 2.0 Specification\n\n")
 		fmt.Fprintf(writer, "This API adheres to the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification).\n\n")
@@ -53,8 +104,6 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 	sort.Slice(apiFunctions, func(i, j int) bool {
 		return apiFunctions[i].Command < apiFunctions[j].Command
 	})
-
-	visited := make(map[models.StructKey]bool) // Keep track of visited structs to avoid duplicates
 
 	// Iterate over each API function and write its documentation
 	for _, apiFunc := range apiFunctions {
@@ -95,11 +144,11 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 			}
 			fmt.Fprintf(writer, "\n")
 
-			// For each result, if it's a struct type (not basic), print it inline along with its referenced structs
+			// Inline struct documentation for each endpoint
+			visited := make(map[models.StructKey]bool) // Reset visited map for every endpoint
 			for _, result := range apiFunc.Results {
 				baseType, typeArgs := utils.ParseGenericType(result.Type)
 				if !utils.IsBasicType(baseType) {
-					// Try to find the concrete struct definition
 					concreteType := result.Type
 
 					// Find the struct in structDefinitions
@@ -148,7 +197,6 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 		fmt.Fprintf(writer, "---\n\n")
 	}
 
-	// Flush the buffer to ensure all content is written
 	if err := writer.Flush(); err != nil {
 		return fmt.Errorf("failed to write to output file: %v", err)
 	}
@@ -160,11 +208,6 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 // printStructDefinitionInline prints a given struct's definition and all referenced structs inline.
 // It uses a visited map to avoid duplicates.
 func printStructDefinitionInline(writer *bufio.Writer, key models.StructKey, structDefinitions map[models.StructKey]models.StructDefinition, visited map[models.StructKey]bool) {
-	if visited[key] {
-		return
-	}
-	visited[key] = true
-
 	structDef, exists := structDefinitions[key]
 	if !exists {
 		log.Printf("Warning: Struct '%s.%s' not found in definitions.", key.Package, key.Name)

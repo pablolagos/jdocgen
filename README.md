@@ -1,465 +1,152 @@
-# jdocgen
+# jDocGen: JSON-RPC API Documentation Generator
 
-![jdocgen Logo](https://github.com/pablolagos/jdocgen/raw/main/logo.png) <!-- Optional: Add a logo if available -->
+**jDocGen** is a Go-based tool to generate Markdown documentation for JSON-RPC APIs. It parses Go source files to extract annotated functions and structures, creating a comprehensive API reference, including generic structs and their instantiations.
 
-## Overview
-
-**jdocgen** is a powerful CLI tool designed to automatically generate comprehensive Markdown documentation for your JSON-RPC APIs written in Go. By parsing specially annotated Go source files, `jdocgen` extracts essential information about your API functions, parameters, return values, and data structures, presenting them in a clean and organized Markdown format. This ensures that your API documentation stays up-to-date with your codebase, enhancing maintainability and developer experience.
-
-## Features
-
-- **Automatic Documentation Generation:** Extracts API metadata from annotated Go source files.
-- **Explicit Optional Fields:** Clearly distinguishes between required and optional parameters and results.
-- **Inline Struct Definitions:** Includes detailed descriptions of data structures used in API functions.
-- **Global Project Metadata:** Incorporates project-wide information such as title, version, description, and more.
-- **Easy Installation:** Installable via `go install`, making it accessible across different environments.
-- **Customizable Output:** Specify output file names and target directories effortlessly.
-- **Extensible Architecture:** Designed for easy integration of additional features and customization.
-
-## Table of Contents
-
-- [Installation](#installation)
-- [Usage](#usage)
-- [Annotation Syntax](#annotation-syntax)
-  - [Global Tags](#global-tags)
-  - [API Function Annotations](#api-function-annotations)
-    - [Command Annotation](#command-annotation)
-    - [Description Annotation](#description-annotation)
-    - [Parameter Annotation](#parameter-annotation)
-    - [Result Annotation](#result-annotation)
-- [Example](#example)
-  - [Annotated Source Files](#annotated-source-files)
-  - [Generated Documentation](#generated-documentation)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+---
 
 ## Installation
 
-To install `jdocgen`, ensure you have [Go](https://golang.org/dl/) installed on your system (version 1.18 or later).
-
-Run the following command:
+To install `jDocGen`, run the following command:
 
 ```bash
-go install github.com/pablolagos/jdocgen/cmd/jdocgen@latest
+go install github.com/pablolagos/jdocgen@latest
 ```
 
-This will compile the `jdocgen` binary and place it in your `$GOPATH/bin` directory. Make sure this directory is included in your system's `PATH` to run `jdocgen` from anywhere.
+This will download and install the tool into your `$GOPATH/bin`.
 
-**Verify Installation:**
-
-```bash
-jdocgen --help
-```
-
-**Expected Output:**
-
-```
-Usage of jdocgen:
-  -dir string
-        Root directory to parse for Go files (default ".")
-  -output string
-        Output file for the documentation (default "API_Documentation.md")
-```
+---
 
 ## Usage
 
-After installation and annotating your Go source files, navigate to your project's root directory and run:
+Run `jDocGen` from your project directory to generate the documentation:
 
 ```bash
-jdocgen -output=API_Documentation.md -dir=./
+jdocgen
 ```
 
-**Flags:**
+### Flags
 
-- `-output`: Specifies the name of the output Markdown file (default: `API_Documentation.md`).
-- `-dir`: Specifies the root directory of the Go project to parse (default: current directory).
-
-**Example Command:**
-
-```bash
-jdocgen -output=MyAPI_Docs.md -dir=./
-```
-
-**Output:**
-
-```
-Documentation successfully generated at /absolute/path/to/your/project/MyAPI_Docs.md
-```
-
-## Annotation Syntax
-
-To enable `jdocgen` to parse your Go source files effectively, you need to annotate your code using structured comments. These annotations provide metadata about your API functions, parameters, return values, and global project information.
-
-### Global Tags
-
-Global tags provide metadata about the entire project. These can be placed in the comments associated with **any function** or at the very top of **any Go file** within the project.
-
-**Mandatory Global Tags:**
-
-- `@title`: The title of your API documentation.
-- `@version`: The current version of your API.
-- `@description`: A brief description of your API.
-
-**Optional Global Tags:**
-
-- `@license`
-- `@contact`
-- `@terms`
-- `@repository`
-- `@tags`
-- `@copyright`
-
-**Example:**
-
-```go
-// @title JSON-RPC API Documentation
-// @version 1.0.0
-// @description This project provides a JSON-RPC API for managing users and products.
-```
-
-**Placement:**
-
-- **Any Function:** You can include global tags in the comments of any function across your project. This allows you to organize annotations logically based on functionality.
-
-  ```go
-  // @title User Management API
-  // @version 2.0.1
-  // @description Handles user creation, updates, and deletion.
-  func ManageUser() {
-      // Implementation here
-  }
-  ```
-
-- **Top of Any Go File:** Alternatively, place global tags at the very top of any Go file to centralize project-wide metadata.
-
-  ```go
-  // Package product provides functionality to manage product listings.
-  // @title Product Management API
-  // @version 1.2.3
-  // @description Manages product listings, updates, and removals.
-  package product
-  
-  // Implementation here
-  ```
-
-**Notes:**
-
-- Ensure that **at least one file** in your project contains the **mandatory global tags** (`@title`, `@version`, `@description`) to successfully generate the documentation.
-- While global tags can be distributed across multiple files, it's recommended to **centralize them** in a single location (e.g., a dedicated `docs.go` file) to maintain consistency and avoid conflicts.
+| Flag        | Default                | Description                                                                 |
+|-------------|------------------------|-----------------------------------------------------------------------------|
+| `-output`   | `API_Documentation.md`| Path to the output Markdown file.                                           |
+| `-dir`      | `.`                    | Directory to parse for Go source files.                                     |
+| `-omit-rfc` | `false`                | Omit the JSON-RPC 2.0 specification introduction in the documentation.      |
 
 ---
 
+## How to Use Annotations
 
-### API Function Annotations
+To document your API endpoints and related structures, use the following annotations in your code.
 
-Each API function should be annotated with specific tags that describe its purpose, parameters, and return values.
+### 1. **Project-Level Tags**
 
-#### Command Annotation
+Annotate your project in a Go file to provide metadata for the generated documentation.
 
-- **Tag:** `@Command`
-- **Purpose:** Specifies the name of the API command.
-- **Format:**
-
-  ```
-  // @Command <CommandName>
-  ```
-
-- **Example:**
-
-  ```go
-  // @Command CreateUser
-  ```
-
-#### Description Annotation
-
-- **Tag:** `@Description`
-- **Purpose:** Provides a brief description of what the API function does.
-- **Format:**
-
-  ```
-  // @Description <Description>
-  ```
-
-- **Example:**
-
-  ```go
-  // @Description Creates a new user in the system.
-  ```
-
-#### Parameter Annotation
-
-- **Tag:** `@Parameter`
-- **Purpose:** Describes a parameter accepted by the API function.
-- **Format:**
-
-  ```
-  // @Parameter <Name> <Type> [optional] <Description>
-  ```
-
-- **Notes:**
-    - The keyword `optional` is case-insensitive and denotes that the parameter is not required.
-    - If `optional` is present, the `Required` flag is set to `false`; otherwise, it's `true`.
-
-- **Examples:**
-
-  ```go
-  // @Parameter user models.User The user data to create.
-  // @Parameter updates *models.User optional The updated user data.
-  ```
-
-#### Result Annotation
-
-- **Tag:** `@Result`
-- **Purpose:** Describes a return value produced by the API function.
-- **Format:**
-
-  ```
-  // @Result <Name> <Type> [optional] <Description>
-  ```
-
-- **Notes:**
-    - The keyword `optional` is case-insensitive and denotes that the result is not guaranteed.
-    - If `optional` is present, the `Required` flag is set to `false`; otherwise, it's `true`.
-
-- **Examples:**
-
-  ```go
-  // @Result id string The unique identifier of the created user.
-  // @Result err error Error in case of failure.
-  // @Result profile *Profile optional Detailed profile information.
-  ```
-
-## Example
-
-### Annotated Source Files
-
-#### `cmd/jdocgen/main.go`
+Example:
 
 ```go
-// @title JSON-RPC API Documentation
-// @version 1.0.0
-// @description This project provides a JSON-RPC API for managing users and products.
-// @license Apache-2.0
-// @contact api-support@example.com
-// @terms https://example.com/terms
-// @repository https://github.com/pablolagos/jdocgen
-// @tags User, Product, Management
-// @copyright 
-// © 2024 Your Company
-package main
+// @Project My API Documentation
+// @Version 1.0.0
+// @Author Jane Doe
+// @Description This is the API documentation for My JSON-RPC service.
+```
 
-func main() {
-	// Implementation here
+### 2. **Endpoint-Level Tags**
+
+Use these tags in your handler functions to describe API endpoints:
+
+| Tag          | Description                                                                                   |
+|--------------|-----------------------------------------------------------------------------------------------|
+| `@Command`   | The unique name of the command (method) in the JSON-RPC API.                                  |
+| `@Description` | A short description of what the command does.                                                |
+| `@Parameter` | Describes a parameter for the function in the format: `name type description [optional flag]`.|
+| `@Result`    | Describes the return value of the function in the format: `type description`.                 |
+
+Example:
+
+```go
+// GetAllMetrics returns statistics for the last 30 days.
+//
+// @Command stats.GetAllMetrics
+// @Description Get statistics for the last 30 days.
+// @Parameter tz string Timezone for the stats. [optional]
+// @Result Stats Statistics information.
+func (h *Handlers) GetAllMetrics(ctx *jrpc.Context) error {
+	// Implementation here...
 }
 ```
 
-#### `api/user.go`
+### 3. **Struct-Level Tags**
+
+For structs, provide a description to include them in the documentation. Generic structs are supported and expanded when referenced by endpoints.
+
+Example:
 
 ```go
-package api
-
-import "github.com/pablolagos/jdocgen/models"
-
-// @Command CreateUser
-// @Description Creates a new user in the system.
-// @Parameter user models.User The user data to create.
-// @Result id string The unique identifier of the created user.
-// @Result err error Error in case of failure.
-func CreateUser(user models.User) (id string, err error) {
-	// Implementation here
-	return "unique-id", nil
-}
-
-// @Command UpdateUser
-// @Description Updates an existing user's information.
-// @Parameter id string The unique identifier of the user to update.
-// @Parameter updates *models.User optional The updated user data.
-// @Result success bool Indicates if the update was successful.
-// @Result err error Error in case of failure.
-func UpdateUser(id string, updates *models.User) (success bool, err error) {
-	// Implementation here
-	return true, nil
-}
-
-// @Command DeleteUser
-// @Description Deletes a user from the system.
-// @Parameter id string The unique identifier of the user to delete.
-// @Result success bool Indicates if the deletion was successful.
-// @Result err error Error in case of failure.
-func DeleteUser(id string) (success bool, err error) {
-	// Implementation here
-	return true, nil
+// Pagination represents a paginated response.
+// @description Pagination is a generic struct for paginated data.
+type Pagination[T any] struct {
+	Data       []T `json:"data"`        // Data for the current page
+	Page       int `json:"page"`        // Current page number
+	PageSize   int `json:"page_size"`   // Number of items per page
+	TotalPages int `json:"total_pages"` // Total number of pages
+	TotalItems int `json:"total_items"` // Total number of items available
 }
 ```
 
-#### `models/user.go`
+---
 
-```go
-// models/user.go
-package models
+## Example Output
 
-// User represents a user in the system.
-type User struct {
-	// Username is the unique username of the user.
-	Username string `json:"username"`
-	// Email is the user's email address.
-	Email string `json:"email"`
-	// Age is the user's age.
-	Age int `json:"age"`
-}
-```
-
-### Generated Documentation
-
-After running `jdocgen`, the `API_Documentation.md` will look like this:
+### Endpoint Documentation
 
 ```markdown
-# JSON-RPC API Documentation
+## stats.GetAllMetrics
 
-**Version:** 1.0.0
+Get statistics for the last 30 days.
 
-**Description:** This project provides a JSON-RPC API for managing users and products.
+### Parameters:
 
-**Author:** John Doe
+| Name | Type   | Description              | Required |
+|------|--------|--------------------------|----------|
+| tz   | string | Timezone for the stats.  | Optional |
 
-**License:** Apache-2.0
+### Results:
 
-**Contact:** api-support@example.com
-
-**Terms of Service:** https://example.com/terms
-
-**Repository:** [https://github.com/pablolagos/jdocgen](https://github.com/pablolagos/jdocgen)
-
-**Tags:** User, Product, Management
+| Name    | Type | Description           |
+|---------|------|-----------------------|
+| result  | Stats| Statistics information|
 
 ---
 
-## API Overview
+### Struct Documentation
 
-This document describes the functions available through the JSON-RPC API.
+#### Stats
 
-## `CreateUser`
-
-Creates a new user in the system.
-
-### Parameters
-
-| Name | Type | Description | Required |
-|------|------|-------------|----------|
-| `user` | `models.User` | The user data to create. | Yes     |
-
-#### `User` Structure
-
-| Field    | Type   | Description                    |
-|----------|--------|--------------------------------|
-| `username` | `string` | Username is the unique username of the user. |
-| `email`    | `string` | Email is the user's email address. |
-| `age`      | `int`    | Age is the user's age. |
-
-### Return Values
-
-| Name | Type | Description | Required |
-|------|------|-------------|----------|
-| `id`   | `string` | The unique identifier of the created user. | Yes     |
-| `err`  | `error` | Error in case of failure. | Yes     |
-
----
-
-## `UpdateUser`
-
-Updates an existing user's information.
-
-### Parameters
-
-| Name | Type | Description | Required |
-|------|------|-------------|----------|
-| `id` | `string` | The unique identifier of the user to update. | Yes     |
-| `updates` | `*models.User` | The updated user data. | *No*     |
-
-#### `User` Structure
-
-| Field    | Type   | Description                    |
-|----------|--------|--------------------------------|
-| `username` | `string` | Username is the unique username of the user. |
-| `email`    | `string` | Email is the user's email address. |
-| `age`      | `int`    | Age is the user's age. |
-
-### Return Values
-
-| Name | Type | Description | Required |
-|------|------|-------------|----------|
-| `success` | `bool` | Indicates if the update was successful. | Yes     |
-| `err`  | `error` | Error in case of failure. | Yes     |
-
----
-
-## `DeleteUser`
-
-Deletes a user from the system.
-
-### Parameters
-
-| Name | Type | Description | Required |
-|------|------|-------------|----------|
-| `id` | `string` | The unique identifier of the user to delete. | Yes     |
-
-### Return Values
-
-| Name | Type | Description | Required |
-|------|------|-------------|----------|
-| `success` | `bool` | Indicates if the deletion was successful. | Yes     |
-| `err`  | `error` | Error in case of failure. | Yes     |
-
----
+| Name                | Type   | Description |
+|---------------------|--------|-------------|
+| TotalScannedFiles   | []int  | Total files scanned in the last 30 days. |
+| TotalInfectedFiles  | []int  | Total infected files in the last 30 days.|
+| QuarantinedFiles    | []int  | Files quarantined in the last 30 days.   |
 ```
 
-**Highlights:**
+---
 
-- **Clear Indicators for Optional Fields:** The `updates` parameter in the `UpdateUser` function is marked as `*No*` in the "Required" column, indicating its optionality.
-- **Clean Descriptions:** The `optional` keyword does not appear in the descriptions, maintaining readability.
-- **Consistent Structure:** Each API function follows a consistent format, enhancing the overall coherence of the documentation.
+## Features
+
+- **Support for Generics**: Expands and documents generic structs with their instantiated types.
+- **Detailed Endpoint Information**: Automatically includes parameters, results, and referenced structs.
+- **Project Metadata**: Allows easy inclusion of project-level information such as version, author, and description.
+- **JSON-RPC Specification**: Optionally includes an overview of JSON-RPC 2.0.
+
+---
 
 ## Contributing
 
-Contributions are welcome! Whether it's reporting bugs, suggesting features, or improving documentation, your input helps make `jdocgen` better.
+Contributions are welcome! If you encounter any issues or have suggestions, please [open an issue](https://github.com/pablolagos/jdocgen/issues) or submit a pull request.
 
-1. **Fork the Repository**
-
-   Click the [Fork](https://github.com/pablolagos/jdocgen/fork) button at the top right of this page.
-
-2. **Clone Your Fork**
-
-   ```bash
-   git clone https://github.com/yourusername/jdocgen.git
-   ```
-
-3. **Create a Branch**
-
-   ```bash
-   git checkout -b feature/YourFeature
-   ```
-
-4. **Make Your Changes**
-
-   Implement your feature or bug fix.
-
-5. **Commit Your Changes**
-
-   ```bash
-   git commit -m "Add feature: YourFeature"
-   ```
-
-6. **Push to Your Fork**
-
-   ```bash
-   git push origin feature/YourFeature
-   ```
-
-7. **Open a Pull Request**
-
-   Navigate to the original repository and open a pull request detailing your changes.
+---
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/pablolagos/jdocgen/blob/main/LICENSE) file for details.
