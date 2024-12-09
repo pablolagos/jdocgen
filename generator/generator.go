@@ -14,13 +14,9 @@ import (
 )
 
 // GenerateDocumentation generates markdown documentation for API endpoints.
-// It documents only the structs referenced by API functions with @Command annotations.
-// includeRFC determines whether to include JSON-RPC 2.0 specification information.
+// Now, we print structs inline, immediately after referencing them in the results section.
+// If a struct references other structs, we document those inline as well.
 func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo, outFile string, includeRFC bool) error {
-	// Step 1: Collect the subset of structs to document
-	structsToDocument := collectStructsToDocument(apiFunctions, structDefinitions)
-
-	// Step 2: Create the output file
 	file, err := os.Create(outFile)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %v", err)
@@ -29,7 +25,7 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 
 	writer := bufio.NewWriter(file)
 
-	// Step 3: Write Project Info at the top
+	// Write Project Info at the top
 	fmt.Fprintf(writer, "# %s\n\n", projectInfo.Title)
 	fmt.Fprintf(writer, "Version: %s\n\n", projectInfo.Version)
 	if projectInfo.Description != "" {
@@ -58,6 +54,8 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 		return apiFunctions[i].Command < apiFunctions[j].Command
 	})
 
+	visited := make(map[models.StructKey]bool) // Keep track of visited structs to avoid duplicates
+
 	// Iterate over each API function and write its documentation
 	for _, apiFunc := range apiFunctions {
 		log.Printf("Documenting API Command: %s", apiFunc.Command)
@@ -80,7 +78,6 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 				if !param.Required {
 					required = "No"
 				}
-				// Escape pipe characters in descriptions to prevent markdown table issues
 				description := strings.ReplaceAll(param.Description, "|", "\\|")
 				fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", param.Name, param.Type, description, required)
 			}
@@ -93,112 +90,51 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 			fmt.Fprintf(writer, "| Name | Type | Description |\n")
 			fmt.Fprintf(writer, "|------|------|-------------|\n")
 			for _, result := range apiFunc.Results {
-				// Escape pipe characters in descriptions to prevent markdown table issues
 				description := strings.ReplaceAll(result.Description, "|", "\\|")
 				fmt.Fprintf(writer, "| %s | %s | %s |\n", result.Name, result.Type, description)
 			}
 			fmt.Fprintf(writer, "\n")
 
-			// Include detailed struct definitions for result types that are structs
+			// For each result, if it's a struct type (not basic), print it inline along with its referenced structs
 			for _, result := range apiFunc.Results {
-				// Check if the result type is a struct (excluding basic types)
 				baseType, typeArgs := utils.ParseGenericType(result.Type)
 				if !utils.IsBasicType(baseType) {
-					// Determine if it's a generic instantiation
-					if len(typeArgs) > 0 {
-						// It's a generic type instantiation, e.g., Pagination[ReportItem]
-						concreteType := result.Type
-						structKey := models.StructKey{
-							Package: "", // To be determined
-							Name:    concreteType,
-						}
+					// Try to find the concrete struct definition
+					concreteType := result.Type
 
-						// Find the concrete struct in structDefinitions
-						var found bool
-						var resolvedKey models.StructKey
+					// Find the struct in structDefinitions
+					var found bool
+					var resolvedKey models.StructKey
+					for key := range structDefinitions {
+						if key.Name == concreteType {
+							resolvedKey = key
+							found = true
+							break
+						}
+					}
+
+					if !found && len(typeArgs) == 0 {
+						// If not a generic instantiation, try to find the base type
 						for key := range structDefinitions {
-							if key.Name == structKey.Name && (structKey.Package == "" || key.Package == structKey.Package) {
+							if key.Name == baseType {
 								resolvedKey = key
 								found = true
 								break
 							}
 						}
+					}
 
-						if found {
-							structDef := structDefinitions[resolvedKey]
-							// Write struct details
-							fmt.Fprintf(writer, "#### %s.%s\n\n", resolvedKey.Package, structDef.Name)
-							if structDef.Description != "" {
-								fmt.Fprintf(writer, "%s\n\n", structDef.Description)
-							}
-							if len(structDef.Fields) > 0 {
-								fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
-								fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
-								for _, field := range structDef.Fields {
-									description := strings.ReplaceAll(field.Description, "|", "\\|")
-									jsonName := field.JSONName
-									if jsonName == "-" {
-										jsonName = "omitempty"
-									}
-									fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
-								}
-								fmt.Fprintf(writer, "\n")
-							} else {
-								fmt.Fprintf(writer, "_No fields defined._\n\n")
-							}
-						} else {
-							log.Printf("Warning: Struct '%s' not found for result '%s'", concreteType, result.Name)
-						}
+					if found {
+						// Print the struct and all referenced structs inline
+						printStructDefinitionInline(writer, resolvedKey, structDefinitions, visited)
 					} else {
-						// Non-generic struct
-						concreteType := baseType
-						structKey := models.StructKey{
-							Package: "", // To be determined
-							Name:    concreteType,
-						}
-
-						// Find the struct in structDefinitions
-						var found bool
-						var resolvedKey models.StructKey
-						for key := range structDefinitions {
-							if key.Name == structKey.Name && (structKey.Package == "" || key.Package == structKey.Package) {
-								resolvedKey = key
-								found = true
-								break
-							}
-						}
-
-						if found {
-							structDef := structDefinitions[resolvedKey]
-							// Write struct details
-							fmt.Fprintf(writer, "#### %s.%s\n\n", resolvedKey.Package, structDef.Name)
-							if structDef.Description != "" {
-								fmt.Fprintf(writer, "%s\n\n", structDef.Description)
-							}
-							if len(structDef.Fields) > 0 {
-								fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
-								fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
-								for _, field := range structDef.Fields {
-									description := strings.ReplaceAll(field.Description, "|", "\\|")
-									jsonName := field.JSONName
-									if jsonName == "-" {
-										jsonName = "omitempty"
-									}
-									fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
-								}
-								fmt.Fprintf(writer, "\n")
-							} else {
-								fmt.Fprintf(writer, "_No fields defined._\n\n")
-							}
-						} else {
-							log.Printf("Warning: Struct '%s' not found for result '%s'", concreteType, result.Name)
-						}
+						log.Printf("Warning: Struct '%s' not found for result '%s'", concreteType, result.Name)
 					}
 				}
 			}
 		}
 
-		// Optional: Write Errors section if there are any errors
+		// Errors section
 		if len(apiFunc.Errors) > 0 {
 			fmt.Fprintf(writer, "### Errors:\n\n")
 			fmt.Fprintf(writer, "| Code | Description |\n")
@@ -209,59 +145,7 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 			fmt.Fprintf(writer, "\n")
 		}
 
-		// Add a horizontal rule to separate API functions
 		fmt.Fprintf(writer, "---\n\n")
-	}
-
-	// Step 4: Document all structs collected in structsToDocument
-	if len(structsToDocument) > 0 {
-		fmt.Fprintf(writer, "## Struct Definitions\n\n")
-		// Sort structs for consistent order
-		sortedKeys := make([]models.StructKey, 0, len(structsToDocument))
-		for key := range structsToDocument {
-			sortedKeys = append(sortedKeys, key)
-		}
-		sort.Slice(sortedKeys, func(i, j int) bool {
-			if sortedKeys[i].Package == sortedKeys[j].Package {
-				return sortedKeys[i].Name < sortedKeys[j].Name
-			}
-			return sortedKeys[i].Package < sortedKeys[j].Package
-		})
-
-		for _, key := range sortedKeys {
-			structDef, exists := structDefinitions[key]
-			if !exists {
-				log.Printf("Warning: Struct '%s.%s' not found in definitions.", key.Package, key.Name)
-				continue
-			}
-			log.Printf("Documenting struct: Package='%s', Name='%s'", key.Package, key.Name)
-
-			// Write struct header
-			fmt.Fprintf(writer, "### %s.%s\n\n", key.Package, key.Name)
-
-			// Write description
-			if structDef.Description != "" {
-				fmt.Fprintf(writer, "%s\n\n", structDef.Description)
-			}
-
-			// Write fields table
-			if len(structDef.Fields) > 0 {
-				fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
-				fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
-				for _, field := range structDef.Fields {
-					// Escape pipe characters in descriptions to prevent markdown table issues
-					description := strings.ReplaceAll(field.Description, "|", "\\|")
-					jsonName := field.JSONName
-					if jsonName == "-" {
-						jsonName = "omitempty"
-					}
-					fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
-				}
-				fmt.Fprintf(writer, "\n")
-			} else {
-				fmt.Fprintf(writer, "_No fields defined._\n\n")
-			}
-		}
 	}
 
 	// Flush the buffer to ensure all content is written
@@ -273,82 +157,94 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 	return nil
 }
 
-// collectStructsToDocument determines which structs should be documented based on API functions.
-// It includes all structs referenced by API functions' Parameters and Results, recursively.
-func collectStructsToDocument(apiFunctions []models.APIFunction, structDefinitions map[models.StructKey]models.StructDefinition) map[models.StructKey]struct{} {
-	structsToDocument := make(map[models.StructKey]struct{})
-	visited := make(map[models.StructKey]struct{})
-
-	for _, apiFunc := range apiFunctions {
-		// Collect types from Parameters
-		for _, param := range apiFunc.Parameters {
-			collectStructsFromType(param.Type, apiFunc.PackageName, apiFunc.ImportAliases, structDefinitions, structsToDocument, visited)
-		}
-
-		// Collect types from Results
-		for _, result := range apiFunc.Results {
-			collectStructsFromType(result.Type, apiFunc.PackageName, apiFunc.ImportAliases, structDefinitions, structsToDocument, visited)
-		}
-	}
-
-	return structsToDocument
-}
-
-// collectStructsFromType recursively collects structs referenced by a given type.
-func collectStructsFromType(typ string, currentPackage string, importAliases map[string]string, structDefinitions map[models.StructKey]models.StructDefinition, structsToDocument map[models.StructKey]struct{}, visited map[models.StructKey]struct{}) {
-	baseType, typeArgs := utils.ParseGenericType(typ)
-
-	// Skip basic types
-	if utils.IsBasicType(baseType) {
+// printStructDefinitionInline prints a given struct's definition and all referenced structs inline.
+// It uses a visited map to avoid duplicates.
+func printStructDefinitionInline(writer *bufio.Writer, key models.StructKey, structDefinitions map[models.StructKey]models.StructDefinition, visited map[models.StructKey]bool) {
+	if visited[key] {
 		return
 	}
-
-	pkg, typeName := resolvePackageAndType(baseType, currentPackage, importAliases, structDefinitions)
-	if typeName == "" {
-		// Cannot resolve type, skip
-		log.Printf("Warning: Cannot resolve type '%s'", baseType)
-		return
-	}
-
-	key := models.StructKey{
-		Package: pkg,
-		Name:    typeName,
-	}
-
-	if _, exists := structsToDocument[key]; !exists {
-		structsToDocument[key] = struct{}{}
-	}
-
-	// If generic, process type arguments
-	if len(typeArgs) > 0 {
-		for _, arg := range typeArgs {
-			collectStructsFromType(arg, currentPackage, importAliases, structDefinitions, structsToDocument, visited)
-		}
-	}
-
-	// Now, traverse fields of this struct to collect referenced structs
-	if _, seen := visited[key]; seen {
-		return
-	}
-	visited[key] = struct{}{}
+	visited[key] = true
 
 	structDef, exists := structDefinitions[key]
 	if !exists {
-		log.Printf("Warning: Struct '%s.%s' not found in definitions", key.Package, key.Name)
+		log.Printf("Warning: Struct '%s.%s' not found in definitions.", key.Package, key.Name)
 		return
 	}
 
+	fmt.Fprintf(writer, "#### %s.%s\n\n", key.Package, structDef.Name)
+	if structDef.Description != "" {
+		fmt.Fprintf(writer, "%s\n\n", structDef.Description)
+	}
+	if len(structDef.Fields) > 0 {
+		fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
+		fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
+		for _, field := range structDef.Fields {
+			description := strings.ReplaceAll(field.Description, "|", "\\|")
+			jsonName := field.JSONName
+			if jsonName == "-" {
+				jsonName = "omitempty"
+			}
+			fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
+		}
+		fmt.Fprintf(writer, "\n")
+	} else {
+		fmt.Fprintf(writer, "_No fields defined._\n\n")
+	}
+
+	// Now, for each field, if it's a struct type, print it inline
 	for _, field := range structDef.Fields {
-		collectStructsFromType(field.Type, key.Package, map[string]string{}, structDefinitions, structsToDocument, visited)
+		baseType, typeArgs := utils.ParseGenericType(field.Type)
+		if utils.IsBasicType(baseType) {
+			continue
+		}
+
+		// Resolve the field type
+		fieldPkg, fieldTypeName := resolvePackageAndType(baseType, key.Package, map[string]string{}, structDefinitions)
+		if fieldTypeName == "" {
+			// Cannot resolve type, skip
+			continue
+		}
+
+		// If this is a generic instantiation, construct the concrete type name
+		var concreteType string
+		if len(typeArgs) > 0 {
+			concreteType = fmt.Sprintf("%s[%s]", fieldTypeName, strings.Join(typeArgs, ", "))
+		} else {
+			concreteType = fieldTypeName
+		}
+
+		var found bool
+		var fieldResolvedKey models.StructKey
+		for k := range structDefinitions {
+			if k.Name == concreteType {
+				fieldResolvedKey = k
+				found = true
+				break
+			}
+		}
+
+		if !found && len(typeArgs) == 0 {
+			// If not found as a generic instantiation, try base type
+			for k := range structDefinitions {
+				if k.Name == fieldTypeName && (fieldPkg == "" || k.Package == fieldPkg) {
+					fieldResolvedKey = k
+					found = true
+					break
+				}
+			}
+		}
+
+		if found {
+			printStructDefinitionInline(writer, fieldResolvedKey, structDefinitions, visited)
+		}
 	}
 }
 
 // resolvePackageAndType resolves the package and type name for a given type.
-// It handles fully qualified types and uses import aliases.
-// If the type is unqualified, it assigns it to the current package if it exists there.
+// If the type is unqualified, it assumes it's in the current package if it exists there.
 func resolvePackageAndType(typ string, currentPackage string, importAliases map[string]string, structDefinitions map[models.StructKey]models.StructDefinition) (pkg string, typeName string) {
 	if strings.Contains(typ, ".") {
-		// Type is fully qualified
+		// Fully qualified type
 		parts := strings.Split(typ, ".")
 		if len(parts) != 2 {
 			return "", ""
@@ -364,7 +260,7 @@ func resolvePackageAndType(typ string, currentPackage string, importAliases map[
 		return pkgAlias, typeName
 	}
 
-	// Type is unqualified; check if it exists in the current package
+	// Unqualified type
 	key := models.StructKey{
 		Package: currentPackage,
 		Name:    typ,
@@ -373,8 +269,7 @@ func resolvePackageAndType(typ string, currentPackage string, importAliases map[
 		return currentPackage, typ
 	}
 
-	// If not found in the current package, it's likely from another package without a prefix
-	// Log a warning and return empty strings
+	// Not found in current package
 	log.Printf("Type '%s' not found in package '%s'. Ensure it is imported or fully qualified.", typ, currentPackage)
 	return "", ""
 }
