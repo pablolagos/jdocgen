@@ -1,12 +1,10 @@
-// cmd/jdocgen/main.go
+// main.go
 package main
 
 import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
-
 	"path/filepath"
 
 	"github.com/pablolagos/jdocgen/generator"
@@ -21,25 +19,22 @@ func main() {
 
 	flag.Parse()
 
-	// Validate directory path
+	// Resolve absolute directory path
 	absDir, err := filepath.Abs(*dirPath)
 	if err != nil {
 		log.Fatalf("Error resolving directory path: %v", err)
 	}
 
-	// Parse the project
-	functions, structs, projectInfo, err := parser.ParseProject(absDir)
+	// Parse the project to collect API functions and all struct definitions
+	apiFunctions, structs, projectInfo, err := parser.ParseProject(absDir)
 	if err != nil {
 		log.Fatalf("Error parsing project: %v", err)
 	}
 
-	// Generate Markdown documentation
-	markdown := generator.GenerateMarkdown(functions, structs, projectInfo, !*omitRFC)
-
-	// Write to the output file
-	err = os.WriteFile(*outputPath, []byte(markdown), 0644)
+	// Generate Markdown documentation for API endpoints
+	err = generator.GenerateDocumentation(apiFunctions, structs, projectInfo, *outputPath, !*omitRFC)
 	if err != nil {
-		log.Fatalf("Error writing to output file: %v", err)
+		log.Fatalf("Error generating documentation: %v", err)
 	}
 
 	fmt.Printf("Documentation successfully generated at %s\n", *outputPath)

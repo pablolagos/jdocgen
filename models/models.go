@@ -1,10 +1,18 @@
-// models/struct.go
+// models/models.go
 package models
 
 // StructKey uniquely identifies a struct by its package and name.
 type StructKey struct {
 	Package string
 	Name    string
+}
+
+// StructDefinition represents the definition of a struct, including its fields and description.
+type StructDefinition struct {
+	Name        string
+	Description string
+	Fields      []StructField
+	TypeParams  []TypeParam
 }
 
 // StructField represents a single field within a struct.
@@ -15,14 +23,13 @@ type StructField struct {
 	JSONName    string
 }
 
-// StructDefinition represents the definition of a struct, including its fields.
-type StructDefinition struct {
-	Name        string
-	Description string
-	Fields      []StructField
+// TypeParam represents a type parameter for generic structs.
+type TypeParam struct {
+	Name       string
+	Constraint string
 }
 
-// APIFunction represents a JSON-RPC API function, including its parameters and results.
+// APIFunction represents an API function with its annotations.
 type APIFunction struct {
 	Command       string
 	Description   string
@@ -33,7 +40,7 @@ type APIFunction struct {
 	PackageName   string
 }
 
-// APIParameter represents a single parameter for an API function.
+// APIParameter represents a parameter of an API function.
 type APIParameter struct {
 	Name        string
 	Type        string
@@ -41,7 +48,7 @@ type APIParameter struct {
 	Required    bool
 }
 
-// APIReturn represents a single return value for an API function.
+// APIReturn represents the return value of an API function.
 type APIReturn struct {
 	Name        string
 	Type        string
@@ -49,13 +56,13 @@ type APIReturn struct {
 	Required    bool
 }
 
-// APIError represents a single error that an API function might return.
+// APIError represents an error that an API function can return.
 type APIError struct {
 	Code        int
 	Description string
 }
 
-// ProjectInfo holds global information about the project.
+// ProjectInfo holds global tags and metadata for the project.
 type ProjectInfo struct {
 	Title       string
 	Version     string

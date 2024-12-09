@@ -2,391 +2,286 @@
 package generator
 
 import (
+	"bufio"
 	"fmt"
 	"log"
-	"regexp"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/pablolagos/jdocgen/models"
+	"github.com/pablolagos/jdocgen/utils"
 )
 
-// jsonRPCErrorTypes maps standard JSON-RPC 2.0 error codes to their descriptions.
-var jsonRPCErrorTypes = map[int]string{
-	-32700: "Parse error",
-	-32600: "Invalid Request",
-	-32601: "Method not found",
-	-32602: "Invalid params",
-	-32603: "Internal error",
-	// -32000 to -32099 are Server error, reserved for implementation-defined server-errors.
-}
+// GenerateDocumentation generates markdown documentation for API endpoints.
+// It documents only the structs referenced by API functions with @Command annotations.
+// includeRFC determines whether to include JSON-RPC 2.0 specification information.
+func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo, outFile string, includeRFC bool) error {
+	// Step 1: Collect the subset of structs to document
+	// Note: structsToDocument was previously declared here but is not used in the current implementation.
+	// Therefore, it's removed to prevent compilation errors.
 
-// GenerateMarkdown generates Markdown documentation from API functions and struct definitions.
-func GenerateMarkdown(functions []models.APIFunction, structs map[models.StructKey]models.StructDefinition, projectInfo models.ProjectInfo, includeRFC bool) string {
-	var sb strings.Builder
+	// Step 2: Create the output file
+	file, err := os.Create(outFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %v", err)
+	}
+	defer file.Close()
 
-	// Global Project Information
-	sb.WriteString(fmt.Sprintf("# %s\n\n", projectInfo.Title))
-	sb.WriteString(fmt.Sprintf("**Version:** %s\n\n", projectInfo.Version))
-	sb.WriteString(fmt.Sprintf("**Description:** %s\n\n", projectInfo.Description))
+	writer := bufio.NewWriter(file)
+
+	// Step 3: Write Project Info at the top
+	fmt.Fprintf(writer, "# %s\n\n", projectInfo.Title)
+	fmt.Fprintf(writer, "Version: %s\n\n", projectInfo.Version)
+	if projectInfo.Description != "" {
+		fmt.Fprintf(writer, "%s\n\n", projectInfo.Description)
+	}
+
+	// Optional: Add other project info like Author, License, etc.
 	if projectInfo.Author != "" {
-		sb.WriteString(fmt.Sprintf("**Author:** %s\n\n", projectInfo.Author))
+		fmt.Fprintf(writer, "**Author:** %s\n\n", projectInfo.Author)
 	}
 	if projectInfo.License != "" {
-		sb.WriteString(fmt.Sprintf("**License:** %s\n\n", projectInfo.License))
-	}
-	if projectInfo.Contact != "" {
-		sb.WriteString(fmt.Sprintf("**Contact:** %s\n\n", projectInfo.Contact))
-	}
-	if projectInfo.Terms != "" {
-		sb.WriteString(fmt.Sprintf("**Terms of Service:** %s\n\n", projectInfo.Terms))
-	}
-	if projectInfo.Repository != "" {
-		sb.WriteString(fmt.Sprintf("**Repository:** [%s](%s)\n\n", projectInfo.Repository, projectInfo.Repository))
+		fmt.Fprintf(writer, "**License:** %s\n\n", projectInfo.License)
 	}
 	if len(projectInfo.Tags) > 0 {
-		sb.WriteString("**Tags:** ")
-		var tags []string
-		for _, tag := range projectInfo.Tags {
-			tags = append(tags, strings.TrimSpace(tag))
-		}
-		sb.WriteString(strings.Join(tags, ", "))
-		sb.WriteString("\n\n")
-	}
-	if projectInfo.Copyright != "" {
-		sb.WriteString(fmt.Sprintf("**Copyright:** %s\n\n", projectInfo.Copyright))
+		fmt.Fprintf(writer, "**Tags:** %s\n\n", strings.Join(projectInfo.Tags, ", "))
 	}
 
-	sb.WriteString("---\n\n")
-
-	// Introduction Section
+	// Include JSON-RPC 2.0 specification information if not omitted
 	if includeRFC {
-		sb.WriteString("## Introduction\n\n")
-		sb.WriteString("This API adheres to the [JSON-RPC 2.0](https://www.jsonrpc.org/specification) specification, a lightweight remote procedure call (RPC) protocol encoded in JSON. JSON-RPC 2.0 allows for invoking methods on a server by sending JSON-encoded requests and receiving JSON-encoded responses.\n\n")
-		sb.WriteString("**Key Features of JSON-RPC 2.0:**\n\n")
-		sb.WriteString("- **Simple and Lightweight:** Minimalist design without unnecessary features.\n")
-		sb.WriteString("- **Transport Agnostic:** Can be used over various transport protocols such as HTTP, WebSocket, etc.\n")
-		sb.WriteString("- **Batch Requests:** Supports sending multiple requests in a single call.\n")
-		sb.WriteString("- **Notifications:** Allows sending requests that do not require responses.\n\n")
-
-		// JSON-RPC 2.0 Request and Response Structures Section
-		sb.WriteString("## JSON-RPC 2.0 Request and Response Structures\n\n")
-		sb.WriteString("The API follows the [JSON-RPC 2.0](https://www.jsonrpc.org/specification) specification, which defines a simple and lightweight protocol for remote procedure calls using JSON.\n\n")
-
-		sb.WriteString("### Request Structure\n\n")
-		sb.WriteString("A JSON-RPC request object must contain the following members:\n\n")
-		sb.WriteString("- **jsonrpc**: A string specifying the version of the JSON-RPC protocol. Must be exactly `\"2.0\"`.\n")
-		sb.WriteString("- **method**: A string containing the name of the method to be invoked.\n")
-		sb.WriteString("- **params** (optional): A structured value that holds the parameter values to be used during the invocation of the method.\n")
-		sb.WriteString("- **id**: An identifier established by the client that must be unique for each request. It is used to match responses with requests.\n\n")
-
-		sb.WriteString("**Example:**\n\n")
-		sb.WriteString("```json\n")
-		sb.WriteString("{\n")
-		sb.WriteString("  \"jsonrpc\": \"2.0\",\n")
-		sb.WriteString("  \"method\": \"getLicense\",\n")
-		sb.WriteString("  \"params\": { \"userId\": 12345 },\n")
-		sb.WriteString("  \"id\": 1\n")
-		sb.WriteString("}\n")
-		sb.WriteString("```\n\n")
-
-		sb.WriteString("### Response Structure\n\n")
-		sb.WriteString("A JSON-RPC response object must contain the following members:\n\n")
-		sb.WriteString("- **jsonrpc**: A string specifying the version of the JSON-RPC protocol. Must be exactly `\"2.0\"`.\n")
-		sb.WriteString("- **result**: This member is required on success. It holds the value returned by the invoked method.\n")
-		sb.WriteString("- **error**: This member is required on error. It contains an error object with information about the error.\n")
-		sb.WriteString("- **id**: The same identifier as the request it is responding to.\n\n")
-
-		sb.WriteString("**Example (Success):**\n\n")
-		sb.WriteString("```json\n")
-		sb.WriteString("{\n")
-		sb.WriteString("  \"jsonrpc\": \"2.0\",\n")
-		sb.WriteString("  \"result\": { \"licenseCode\": \"ABC123\", \"isValid\": true },\n")
-		sb.WriteString("  \"id\": 1\n")
-		sb.WriteString("}\n")
-		sb.WriteString("```\n\n")
-
-		sb.WriteString("**Example (Error):**\n\n")
-		sb.WriteString("```json\n")
-		sb.WriteString("{\n")
-		sb.WriteString("  \"jsonrpc\": \"2.0\",\n")
-		sb.WriteString("  \"error\": {\n")
-		sb.WriteString("    \"code\": -32601,\n")
-		sb.WriteString("    \"message\": \"Method not found\"\n")
-		sb.WriteString("  },\n")
-		sb.WriteString("  \"id\": 1\n")
-		sb.WriteString("}\n")
-		sb.WriteString("```\n\n")
+		fmt.Fprintf(writer, "## JSON-RPC 2.0 Specification\n\n")
+		fmt.Fprintf(writer, "This API adheres to the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification).\n\n")
 	}
 
-	// API Overview
-	sb.WriteString("## API Overview\n\n")
-	sb.WriteString("This document describes the functions available through the JSON-RPC API.\n\n")
-
-	// Sort API functions alphabetically by Command
-	sort.Slice(functions, func(i, j int) bool {
-		return functions[i].Command < functions[j].Command
+	// Sort API functions for consistent order
+	sort.Slice(apiFunctions, func(i, j int) bool {
+		return apiFunctions[i].Command < apiFunctions[j].Command
 	})
 
-	// Document API Functions
-	for _, fn := range functions {
-		// Function Title and Description
-		sb.WriteString(fmt.Sprintf("## %s\n\n", fn.Command))
-		sb.WriteString(fmt.Sprintf("%s\n\n", fn.Description))
+	// Iterate over each API function and write its documentation
+	for _, apiFunc := range apiFunctions {
+		log.Printf("Documenting API Command: %s", apiFunc.Command)
 
-		// Parameters
-		if len(fn.Parameters) > 0 {
-			sb.WriteString("### Parameters\n\n")
-			sb.WriteString("| Name | Type | Description | Required |\n")
-			sb.WriteString("|------|------|-------------|----------|\n")
-			for _, param := range fn.Parameters {
-				requiredStatus := "Yes"
+		// Write Command as a header
+		fmt.Fprintf(writer, "## %s\n\n", apiFunc.Command)
+
+		// Write Description
+		if apiFunc.Description != "" {
+			fmt.Fprintf(writer, "%s\n\n", apiFunc.Description)
+		}
+
+		// Write Parameters section
+		if len(apiFunc.Parameters) > 0 {
+			fmt.Fprintf(writer, "### Parameters:\n\n")
+			fmt.Fprintf(writer, "| Name | Type | Description | Required |\n")
+			fmt.Fprintf(writer, "|------|------|-------------|----------|\n")
+			for _, param := range apiFunc.Parameters {
+				required := "Yes"
 				if !param.Required {
-					requiredStatus = "*No*"
+					required = "No"
 				}
-				sb.WriteString(fmt.Sprintf("| **%s** | %s | %s | %s |\n", param.Name, param.Type, param.Description, requiredStatus))
+				// Escape pipe characters in descriptions to prevent markdown table issues
+				description := strings.ReplaceAll(param.Description, "|", "\\|")
+				fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", param.Name, param.Type, description, required)
 			}
-			sb.WriteString("\n")
+			fmt.Fprintf(writer, "\n")
+		}
 
-			// Inline Documentation for Parameter Structs
-			for _, param := range fn.Parameters {
-				baseType, pkg := resolveType(param.Type)
-				if baseType == "" {
-					continue
-				}
-				// Skip basic types
-				if isBasicType(baseType) {
-					continue
-				}
+		// Write Results section
+		if len(apiFunc.Results) > 0 {
+			fmt.Fprintf(writer, "### Results:\n\n")
+			fmt.Fprintf(writer, "| Name | Type | Description |\n")
+			fmt.Fprintf(writer, "|------|------|-------------|\n")
+			for _, result := range apiFunc.Results {
+				// Escape pipe characters in descriptions to prevent markdown table issues
+				description := strings.ReplaceAll(result.Description, "|", "\\|")
+				fmt.Fprintf(writer, "| %s | %s | %s |\n", result.Name, result.Type, description)
+			}
+			fmt.Fprintf(writer, "\n")
 
-				// Construct StructKey
-				var structKey models.StructKey
-				if pkg != "" {
-					structKey = models.StructKey{
-						Package: pkg,
-						Name:    baseType,
+			// Include detailed struct definitions for result types that are structs
+			for _, result := range apiFunc.Results {
+				// Check if the result type is a struct (excluding basic types)
+				baseType, _ := utils.ParseGenericType(result.Type)
+				if !utils.IsBasicType(baseType) {
+					// Attempt to resolve the struct
+					// For generic types, handle accordingly
+					baseTypeName, _ := utils.ParseGenericType(result.Type)
+					structKey := models.StructKey{
+						Package: "", // To be determined
+						Name:    baseTypeName,
 					}
-				} else {
-					structKey = models.StructKey{
-						Package: fn.PackageName, // Local package
-						Name:    baseType,
-					}
-				}
 
-				// Check if struct exists
-				structDef, exists := structs[structKey]
-				if exists {
-					visited := make(map[models.StructKey]bool)
-					documentStruct(structKey, structDef, structs, &sb, visited)
-				} else {
-					log.Printf("Warning: Struct '%s' not found for parameter '%s'.", baseType, param.Name)
+					// Find the struct in structDefinitions
+					var found bool
+					var resolvedKey models.StructKey
+					for key := range structDefinitions {
+						if key.Name == structKey.Name {
+							resolvedKey = key
+							found = true
+							break
+						}
+					}
+
+					if found {
+						structDef := structDefinitions[resolvedKey]
+						// Write struct details
+						fmt.Fprintf(writer, "#### %s.%s\n\n", resolvedKey.Package, structDef.Name)
+						if structDef.Description != "" {
+							fmt.Fprintf(writer, "%s\n\n", structDef.Description)
+						}
+						if len(structDef.Fields) > 0 {
+							fmt.Fprintf(writer, "| Name | Type | Description | JSON Name |\n")
+							fmt.Fprintf(writer, "|------|------|-------------|-----------|\n")
+							for _, field := range structDef.Fields {
+								description := strings.ReplaceAll(field.Description, "|", "\\|")
+								jsonName := field.JSONName
+								if jsonName == "-" {
+									jsonName = "omitempty"
+								}
+								fmt.Fprintf(writer, "| %s | %s | %s | %s |\n", field.Name, field.Type, description, jsonName)
+							}
+							fmt.Fprintf(writer, "\n")
+						} else {
+							fmt.Fprintf(writer, "_No fields defined._\n\n")
+						}
+					} else {
+						log.Printf("Warning: Struct '%s' not found for result '%s'", baseTypeName, result.Name)
+					}
 				}
 			}
 		}
 
-		// Result
-		if len(fn.Results) > 0 {
-			sb.WriteString("### Result\n\n")
-			sb.WriteString("| Name | Type | Description |\n")
-			sb.WriteString("|------|------|-------------|\n")
-			for _, ret := range fn.Results {
-				sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", ret.Name, ret.Type, ret.Description))
+		// Optional: Write Errors section if there are any errors
+		if len(apiFunc.Errors) > 0 {
+			fmt.Fprintf(writer, "### Errors:\n\n")
+			fmt.Fprintf(writer, "| Code | Description |\n")
+			fmt.Fprintf(writer, "|------|-------------|\n")
+			for _, apiError := range apiFunc.Errors {
+				fmt.Fprintf(writer, "| %d | %s |\n", apiError.Code, apiError.Description)
 			}
-			sb.WriteString("\n")
-
-			// Inline Documentation for Result Structs
-			for _, ret := range fn.Results {
-				baseType, pkg := resolveType(ret.Type)
-				if baseType == "" {
-					continue
-				}
-				// Skip basic types
-				if isBasicType(baseType) {
-					continue
-				}
-
-				// Construct StructKey
-				var structKey models.StructKey
-				if pkg != "" {
-					structKey = models.StructKey{
-						Package: pkg,
-						Name:    baseType,
-					}
-				} else {
-					structKey = models.StructKey{
-						Package: fn.PackageName, // Local package
-						Name:    baseType,
-					}
-				}
-
-				// Check if struct exists
-				structDef, exists := structs[structKey]
-				if exists {
-					visited := make(map[models.StructKey]bool)
-					documentStruct(structKey, structDef, structs, &sb, visited)
-				} else {
-					log.Printf("Warning: Struct '%s' not found for result '%s'.", baseType, ret.Name)
-				}
-			}
+			fmt.Fprintf(writer, "\n")
 		}
 
-		// Errors
-		if len(fn.Errors) > 0 {
-			sb.WriteString("### Errors\n\n")
-			sb.WriteString("| Code and Type | Description |\n")
-			sb.WriteString("|---------------|-------------|\n")
-			for _, err := range fn.Errors {
-				errorType, exists := jsonRPCErrorTypes[err.Code]
-				if exists {
-					sb.WriteString(fmt.Sprintf("| `%d` %s | %s |\n", err.Code, errorType, err.Description))
-				} else {
-					sb.WriteString(fmt.Sprintf("| `%d` | %s |\n", err.Code, err.Description))
-				}
-			}
-			sb.WriteString("\n")
-		}
-
-		sb.WriteString("---\n\n")
+		// Add a horizontal rule to separate API functions
+		fmt.Fprintf(writer, "---\n\n")
 	}
 
-	// Append Generator Note
-	sb.WriteString("## Documentation Generator\n\n")
-	sb.WriteString("This documentation was automatically generated using [jdocgen](https://github.com/pablolagos/jdocgen), a CLI tool for generating Markdown documentation from annotated Go source files.\n\n")
+	// Flush the buffer to ensure all content is written
+	if err := writer.Flush(); err != nil {
+		return fmt.Errorf("failed to write to output file: %v", err)
+	}
 
-	return sb.String()
+	log.Printf("Documentation successfully generated at %s", outFile)
+	return nil
 }
 
-// resolveType parses the type string to extract the base type and its package if present.
-// It now handles composite types like slices and pointers by stripping their prefixes.
-func resolveType(typeStr string) (string, string) {
-	// Regular expression to match pointers and slices/arrays
-	re := regexp.MustCompile(`^[\*\[\]]+`)
-	typeStr = re.ReplaceAllString(typeStr, "")
+// collectStructsToDocument determines which structs should be documented based on API functions.
+// It includes all structs referenced by API functions' Parameters and Results, recursively.
+func collectStructsToDocument(apiFunctions []models.APIFunction, structDefinitions map[models.StructKey]models.StructDefinition) map[models.StructKey]struct{} {
+	// Previously, structsToDocument was used here, but since it's not utilized in GenerateDocumentation,
+	// this function can be removed or left as is if you plan to use it in the future.
+	// For now, it's retained but not used to avoid affecting other parts of the code.
+	structsToDocument := make(map[models.StructKey]struct{})
+	visited := make(map[models.StructKey]struct{})
 
-	if strings.Contains(typeStr, ".") {
-		parts := strings.Split(typeStr, ".")
-		if len(parts) == 2 {
-			return parts[1], parts[0]
+	for _, apiFunc := range apiFunctions {
+		// Collect types from Parameters
+		for _, param := range apiFunc.Parameters {
+			collectStructsFromType(param.Type, apiFunc.PackageName, apiFunc.ImportAliases, structDefinitions, structsToDocument, visited)
+		}
+
+		// Collect types from Results
+		for _, result := range apiFunc.Results {
+			collectStructsFromType(result.Type, apiFunc.PackageName, apiFunc.ImportAliases, structDefinitions, structsToDocument, visited)
 		}
 	}
-	return typeStr, ""
+
+	return structsToDocument
 }
 
-// findStruct searches for a struct by its name and package.
-// If packageName is empty, it searches for structs with the given name regardless of package.
-// It prioritizes local package structs over imported ones when packageName is empty.
-func findStruct(structs map[models.StructKey]models.StructDefinition, name string, packageName string, localPackage string) (models.StructDefinition, bool) {
-	if packageName != "" {
-		key := models.StructKey{
-			Package: packageName,
-			Name:    name,
-		}
-		structDef, exists := structs[key]
-		return structDef, exists
-	}
+// collectStructsFromType recursively collects structs referenced by a given type.
+func collectStructsFromType(typ string, currentPackage string, importAliases map[string]string, structDefinitions map[models.StructKey]models.StructDefinition, structsToDocument map[models.StructKey]struct{}, visited map[models.StructKey]struct{}) {
+	baseType, typeArgs := utils.ParseGenericType(typ)
 
-	// First, search in the local package
-	key := models.StructKey{
-		Package: localPackage,
-		Name:    name,
-	}
-	structDef, exists := structs[key]
-	if exists {
-		return structDef, true
-	}
-
-	// If not found locally, search globally (first match)
-	for _, structDef := range structs {
-		if structDef.Name == name {
-			return structDef, true
-		}
-	}
-	return models.StructDefinition{}, false
-}
-
-// documentStruct writes the Markdown documentation for a struct and its nested structs.
-// It uses a 'visited' map to track already documented structs to prevent infinite recursion.
-func documentStruct(structKey models.StructKey, structDef models.StructDefinition, structs map[models.StructKey]models.StructDefinition, sb *strings.Builder, visited map[models.StructKey]bool) {
-	// Check if already visited
-	if visited[structKey] {
+	// Skip basic types
+	if utils.IsBasicType(baseType) {
 		return
 	}
-	visited[structKey] = true
 
-	// Log the struct being documented
-	log.Printf("Documenting Struct: %s.%s", structKey.Package, structKey.Name)
-
-	// Write Struct Description
-	sb.WriteString(fmt.Sprintf("#### %s Structure\n\n", structDef.Name))
-	if structDef.Description != "" {
-		sb.WriteString(fmt.Sprintf("%s\n\n", structDef.Description))
+	pkg, typeName := resolvePackageAndType(baseType, currentPackage, importAliases, structDefinitions)
+	if typeName == "" {
+		// Cannot resolve type, skip
+		log.Printf("Warning: Cannot resolve type '%s'", baseType)
+		return
 	}
 
-	// Write Fields Table
-	sb.WriteString("| Field | Type | Description |\n")
-	sb.WriteString("|-------|------|-------------|\n")
+	key := models.StructKey{
+		Package: pkg,
+		Name:    typeName,
+	}
+
+	if _, exists := structsToDocument[key]; !exists {
+		structsToDocument[key] = struct{}{}
+	}
+
+	// If generic, process type arguments
+	if len(typeArgs) > 0 {
+		for _, arg := range typeArgs {
+			collectStructsFromType(arg, currentPackage, importAliases, structDefinitions, structsToDocument, visited)
+		}
+	}
+
+	// Now, traverse fields of this struct to collect referenced structs
+	if _, seen := visited[key]; seen {
+		return
+	}
+	visited[key] = struct{}{}
+
+	structDef, exists := structDefinitions[key]
+	if !exists {
+		log.Printf("Warning: Struct '%s.%s' not found in definitions", key.Package, key.Name)
+		return
+	}
+
 	for _, field := range structDef.Fields {
-		sb.WriteString(fmt.Sprintf("| **%s** | %s | %s |\n", field.JSONName, field.Type, field.Description))
-
-		// Resolve the field type
-		baseType, pkg := resolveType(field.Type)
-		if baseType == "" {
-			continue
-		}
-
-		// Skip basic types
-		if isBasicType(baseType) {
-			continue
-		}
-
-		// Construct StructKey for nested struct
-		var nestedKey models.StructKey
-		if pkg != "" {
-			nestedKey = models.StructKey{
-				Package: pkg,
-				Name:    baseType,
-			}
-		} else {
-			// Assume same package as parent
-			nestedKey = models.StructKey{
-				Package: structKey.Package,
-				Name:    baseType,
-			}
-		}
-
-		// Check if the nested struct exists
-		nestedStructDef, exists := structs[nestedKey]
-		if exists {
-			// Recursively document the nested struct
-			documentStruct(nestedKey, nestedStructDef, structs, sb, visited)
-		} else {
-			// Log a warning if nested struct definition is missing
-			log.Printf("Warning: Struct '%s' not found for field '%s'.", baseType, field.Name)
-		}
+		collectStructsFromType(field.Type, key.Package, map[string]string{}, structDefinitions, structsToDocument, visited)
 	}
-	sb.WriteString("\n")
 }
 
-// isBasicType checks if a given type is a Go basic type.
-func isBasicType(typeName string) bool {
-	basicTypes := map[string]bool{
-		"string":  true,
-		"bool":    true,
-		"int":     true,
-		"int8":    true,
-		"int16":   true,
-		"int32":   true,
-		"int64":   true,
-		"uint":    true,
-		"uint8":   true,
-		"uint16":  true,
-		"uint32":  true,
-		"uint64":  true,
-		"float32": true,
-		"float64": true,
-		"byte":    true,
-		"rune":    true,
-		// Add more basic types as needed
+// resolvePackageAndType resolves the package and type name for a given type.
+// It handles fully qualified types and uses import aliases.
+// If the type is unqualified, it assigns it to the current package if it exists there.
+func resolvePackageAndType(typ string, currentPackage string, importAliases map[string]string, structDefinitions map[models.StructKey]models.StructDefinition) (pkg string, typeName string) {
+	if strings.Contains(typ, ".") {
+		// Type is fully qualified
+		parts := strings.Split(typ, ".")
+		if len(parts) != 2 {
+			return "", ""
+		}
+		alias := parts[0]
+		typeName = parts[1]
+		pkgAlias, exists := importAliases[alias]
+		if exists {
+			return pkgAlias, typeName
+		}
+		// If alias not found, assume alias is the package name
+		pkgAlias = alias
+		return pkgAlias, typeName
 	}
-	return basicTypes[typeName]
+
+	// Type is unqualified; check if it exists in the current package
+	key := models.StructKey{
+		Package: currentPackage,
+		Name:    typ,
+	}
+	if _, exists := structDefinitions[key]; exists {
+		return currentPackage, typ
+	}
+
+	// If not found in the current package, it's likely from another package without a prefix
+	// Log a warning and return empty strings
+	log.Printf("Type '%s' not found in package '%s'. Ensure it is imported or fully qualified.", typ, currentPackage)
+	return "", ""
 }
