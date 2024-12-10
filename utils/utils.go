@@ -157,5 +157,5 @@ func SplitQualifiedName(qualifiedName string) (pkg string, structName string) {
 	if len(parts) == 2 {
 		return parts[0], parts[1]
 	}
-	return "", qualifiedName // If not qualified, return the structName only
+	return "", qualifiedName
 }

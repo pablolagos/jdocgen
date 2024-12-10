@@ -188,36 +188,73 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 			fmt.Fprintf(writer, "### Additional Structs:\n\n")
 			visited := make(map[models.StructKey]bool) // Reset visited map for every endpoint
 			for _, additional := range apiFunc.AdditionalStructs {
-				baseType, _ := utils.ParseGenericType(additional)
-				if !utils.IsBasicType(baseType) {
-					var resolvedKey models.StructKey
-					var found bool
+				baseType, typeArgs := utils.ParseGenericType(additional)
+				if utils.IsBasicType(baseType) {
+					continue
+				}
+				// Resolve to package and name
+				pkg, baseName := resolvePackageAndType(baseType, apiFunc.PackageName, apiFunc.ImportAliases, structDefinitions)
+				if baseName == "" {
+					log.Printf("Warning: Struct '%s' not found for @Additional annotation.", additional)
+					continue
+				}
 
-					// Handle fully qualified types (e.g., package.structname)
-					if strings.Contains(baseType, ".") {
-						pkg, structName := utils.SplitQualifiedName(baseType)
-						resolvedKey = models.StructKey{
-							Package: pkg,
-							Name:    structName,
+				var concreteType string
+				if len(typeArgs) > 0 {
+					// Construct generic name
+					// For each arg, also resolve package and name if needed
+					resolvedArgs := []string{}
+					for _, arg := range typeArgs {
+						argPkg, argName := resolvePackageAndType(arg, apiFunc.PackageName, apiFunc.ImportAliases, structDefinitions)
+						if argName == "" {
+							argName = arg
 						}
+						if argPkg != "" && argPkg != apiFunc.PackageName {
+							resolvedArgs = append(resolvedArgs, fmt.Sprintf("%s.%s", argPkg, argName))
+						} else {
+							resolvedArgs = append(resolvedArgs, argName)
+						}
+					}
+					concreteType = fmt.Sprintf("%s[%s]", baseName, strings.Join(resolvedArgs, ", "))
+				} else {
+					concreteType = baseName
+				}
+
+				// Find struct definition
+				var found bool
+				var resolvedKey models.StructKey
+				// For generics or normal
+				// Generic or not, package is from base
+				// If generic, we just store in same package as base type
+				if len(typeArgs) > 0 {
+					resolvedKey = models.StructKey{
+						Package: pkg,
+						Name:    concreteType,
+					}
+					if _, exists := structDefinitions[resolvedKey]; !exists {
+						// Create concrete struct if needed (similar to parser logic)
+						// If it's generic and not created yet, you must mimic the parser logic or skip
+						// For simplicity, assume it's already created. If needed, replicate parser logic here.
+						// If not found, warn
+						log.Printf("Warning: Concrete struct '%s.%s' not found for @Additional", pkg, concreteType)
+						continue
+					}
+					found = true
+				} else {
+					// Non-generic
+					resolvedKey = models.StructKey{
+						Package: pkg,
+						Name:    concreteType,
+					}
+					if _, exists := structDefinitions[resolvedKey]; exists {
 						found = true
-					} else {
-						// Unqualified types (assume current package)
-						for key := range structDefinitions {
-							if key.Name == baseType {
-								resolvedKey = key
-								found = true
-								break
-							}
-						}
 					}
+				}
 
-					if found {
-						// Print the struct inline
-						printStructDefinitionInline(writer, resolvedKey, structDefinitions, visited)
-					} else {
-						log.Printf("Warning: Struct '%s' not found for @Additional annotation.", additional)
-					}
+				if found {
+					printStructDefinitionInline(writer, resolvedKey, structDefinitions, visited)
+				} else {
+					log.Printf("Warning: Struct '%s' not found for @Additional annotation.", additional)
 				}
 			}
 		}

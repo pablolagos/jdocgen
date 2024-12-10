@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/parser"
+	goparser "go/parser"
 	"go/token"
 	"log"
 	"os"
@@ -27,27 +27,21 @@ var (
 	ErrMalformedResult    = errors.New("malformed @Result annotation. Expected format: @Result type \"description\"")
 )
 
-// ParseProject recursively parses all Go files in the project directory and its subdirectories.
-// It returns a slice of APIFunctions, a map of StructDefinitions keyed by StructKey, and ProjectInfo.
 func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]models.StructDefinition, models.ProjectInfo, error) {
 	var apiFunctions []models.APIFunction
 	structDefinitions := make(map[models.StructKey]models.StructDefinition)
 	var projectInfo models.ProjectInfo
 	projectInfoSet := false
 
-	// Initialize a new FileSet
 	fset := token.NewFileSet()
-
-	// To prevent infinite recursion in case of cyclic struct references
 	processedStructs := make(map[models.StructKey]bool)
 
-	// First Pass: Collect all struct definitions
+	// First pass: Collect all struct definitions
 	err := filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip hidden directories and test files
 		if info.IsDir() {
 			if info.Name() == "vendor" || strings.HasPrefix(info.Name(), ".") {
 				return filepath.SkipDir
@@ -55,20 +49,18 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 			return nil
 		}
 
-		// Only parse .go files excluding test files
 		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
 
-		// Parse the Go file
-		fileAst, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		fileAst, err := goparser.ParseFile(fset, path, nil, goparser.ParseComments)
 		if err != nil {
-			return nil // Skip files that can't be parsed
+			return nil
 		}
 
 		currentPackage := fileAst.Name.Name
 
-		// Extract global tags from file-level comments
+		// Extract global tags
 		if fileAst.Doc != nil && !projectInfoSet {
 			globalInfo, err := parseGlobalTags(fileAst.Doc)
 			if err == nil {
@@ -98,7 +90,7 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 				}
 				structDef.Description = extractStructDescription(genDecl.Doc)
 
-				// Capture type parameters if the struct is generic
+				// Capture type parameters if generic
 				if typeSpec.TypeParams != nil {
 					for _, field := range typeSpec.TypeParams.List {
 						for _, name := range field.Names {
@@ -113,19 +105,18 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 					}
 				}
 
+				// Process fields
 				for _, field := range structType.Fields.List {
 					fieldName := ""
 					if len(field.Names) > 0 {
 						fieldName = field.Names[0].Name
 					} else {
-						// Embedded field
 						fieldName = utils.ExprToString(field.Type)
 					}
 
 					jsonName := fieldName
 					if field.Tag != nil {
 						tag := field.Tag.Value
-						// Extract json tag
 						jsonName = utils.ExtractJSONTag(tag, fieldName)
 					}
 
@@ -140,16 +131,15 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 					}
 					structDef.Fields = append(structDef.Fields, structField)
 
-					// If the field type is a struct, note it for potential future processing
+					// Note nested structs for processing if needed
 					baseType, pkg := utils.ResolveType(fieldType)
 					if baseType == "" {
 						continue
 					}
-					// Skip basic types
 					if utils.IsBasicType(baseType) {
 						continue
 					}
-					// Construct StructKey
+
 					var structKey models.StructKey
 					if pkg != "" {
 						structKey = models.StructKey{
@@ -162,13 +152,10 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 							Name:    baseType,
 						}
 					}
-					// Avoid re-processing structs
 					if _, exists := structDefinitions[structKey]; exists || processedStructs[structKey] {
 						continue
 					}
-					// Mark as processed to prevent infinite loops
 					processedStructs[structKey] = true
-					// Note: We're not parsing nested structs in the first pass to avoid complexity
 				}
 
 				key := models.StructKey{
@@ -188,19 +175,17 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 		return nil, nil, projectInfo, err
 	}
 
-	// Optional: Log collected structs for verification
 	log.Println("Collected structs:")
 	for key := range structDefinitions {
 		log.Printf(" - Package: %s, Struct: %s", key.Package, key.Name)
 	}
 
-	// Second Pass: Process functions with annotations
+	// Second pass: process functions
 	err = filepath.Walk(rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		// Skip hidden directories and test files
 		if info.IsDir() {
 			if info.Name() == "vendor" || strings.HasPrefix(info.Name(), ".") {
 				return filepath.SkipDir
@@ -208,20 +193,16 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 			return nil
 		}
 
-		// Only parse .go files excluding test files
 		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
 
-		// Parse the Go file
-		fileAst, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		fileAst, err := goparser.ParseFile(fset, path, nil, goparser.ParseComments)
 		if err != nil {
-			return nil // Skip files that can't be parsed
+			return nil
 		}
 
 		currentPackage := fileAst.Name.Name
-
-		// Extract import aliases
 		importAliases := extractImportAliases(fileAst)
 
 		// Extract global tags from file-level comments if not set
@@ -233,29 +214,22 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 			}
 		}
 
-		// Parse functions with annotations
 		for _, decl := range fileAst.Decls {
 			fn, isFn := decl.(*ast.FuncDecl)
 			if !isFn || fn.Doc == nil {
 				continue
 			}
 
-			// Extract API functions
 			apiFunc, err := parseFunction(fn, currentPackage, importAliases, path, fset, structDefinitions)
 			if err == nil {
 				apiFunctions = append(apiFunctions, apiFunc)
 			} else {
-				// Check if the error is ErrMissingCommand
 				if !errors.Is(err, ErrMissingCommand) {
-					// Log other errors with file name and position
-					// Extract function name and position
 					position := fset.Position(fn.Pos())
 					log.Printf("Error in file %s at line %d: Function '%s' skipped due to error: %v", position.Filename, position.Line, fn.Name.Name, err)
 				}
-				// If ErrMissingCommand, do not log and skip silently
 			}
 
-			// Extract global tags from function-level comments if not set
 			if !projectInfoSet {
 				globalInfo, err := parseGlobalTags(fn.Doc)
 				if err == nil {
@@ -276,7 +250,6 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 		return nil, nil, projectInfo, errors.New("no global tags found in any Go file. Please include global tags in at least one file")
 	}
 
-	// Log final structDefinitions for verification
 	log.Println("Final structDefinitions:")
 	for key := range structDefinitions {
 		log.Printf(" - Package: %s, Struct: %s", key.Package, key.Name)
@@ -285,8 +258,6 @@ func ParseProject(rootDir string) ([]models.APIFunction, map[models.StructKey]mo
 	return apiFunctions, structDefinitions, projectInfo, nil
 }
 
-// parseFunction parses a function's comments to extract API annotations, including @Error tags.
-// It handles generic type instantiations by creating concrete StructDefinitions.
 func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[string]string, fileName string, fset *token.FileSet, structDefinitions map[models.StructKey]models.StructDefinition) (models.APIFunction, error) {
 	apiFunc := models.APIFunction{
 		ImportAliases: importAliases,
@@ -319,16 +290,14 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 			}
 			paramName := parts[1]
 			paramType := parts[2]
-			// Assume the description is enclosed in quotes
 			paramDesc := strings.Join(parts[3:], " ")
 			paramDesc = strings.Trim(paramDesc, "\"")
 			param := models.APIParameter{
 				Name:        paramName,
 				Type:        paramType,
 				Description: paramDesc,
-				Required:    true, // Default to required
+				Required:    true,
 			}
-			// Check if the parameter is optional
 			if strings.HasPrefix(paramDesc, "optional") {
 				param.Required = false
 				param.Description = strings.TrimPrefix(param.Description, "optional")
@@ -336,7 +305,6 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 			}
 			apiFunc.Parameters = append(apiFunc.Parameters, param)
 		case "@Result":
-			// Collect all @Result annotations to check for multiples
 			resultAnnotations = append(resultAnnotations, &ast.Comment{Text: line})
 		case "@Error":
 			if len(parts) < 3 {
@@ -345,13 +313,10 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 			errorCodeStr := parts[1]
 			errorDesc := strings.Join(parts[2:], " ")
 			errorDesc = strings.Trim(errorDesc, "\"")
-
-			// Validate that errorCodeStr is a numeric literal
 			errorCode, err := strconv.Atoi(errorCodeStr)
 			if err != nil {
 				return apiFunc, ErrInvalidErrorCode
 			}
-
 			apiError := models.APIError{
 				Code:        errorCode,
 				Description: errorDesc,
@@ -366,48 +331,41 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 		}
 	}
 
-	// Enforce only one @Result annotation
 	if len(resultAnnotations) > 1 {
 		return apiFunc, fmt.Errorf("%w. JSON-RPC specification enforces a single @Result annotation per function.", ErrMultipleResults)
 	}
 
-	// Process @Result annotations
 	if len(resultAnnotations) == 1 {
 		line := strings.TrimSpace(resultAnnotations[0].Text)
 		parts := strings.Fields(line)
 		if len(parts) < 3 {
 			return apiFunc, ErrMalformedResult
 		}
-		// Enforce that the name is implicitly "result" by ensuring the first part after @Result is the type
 		resultType := parts[1]
 		resultDescParts := parts[2:]
 		resultDesc := strings.Join(resultDescParts, " ")
 		resultDesc = strings.Trim(resultDesc, "\"")
 		result := models.APIReturn{
-			Name:        "result", // Name is always "result"
+			Name:        "result",
 			Type:        resultType,
 			Description: resultDesc,
-			Required:    true, // All return values are required
+			Required:    true,
 		}
 		apiFunc.Results = append(apiFunc.Results, result)
 
-		// Check if the result type is a generic struct
 		baseType, typeArgs := utils.ParseGenericType(resultType)
+		// Resolve base type to a package and name
+		basePkg, baseName := resolvePackageAndType(baseType, currentPackage, importAliases, structDefinitions)
+
+		if baseName != "" {
+			log.Printf("Resolved type '%s' to package '%s' and type '%s'", baseType, basePkg, baseName)
+		} else {
+			log.Printf("Failed to resolve type '%s'", baseType)
+		}
+
 		if len(typeArgs) > 0 {
-			// Handle generic type instantiation
-			genBaseType := baseType
-			genArgs := typeArgs
-
-			// Resolve package for generic base type
-			genBaseTypePkg, genBaseTypeName := resolvePackageAndType(genBaseType, currentPackage, importAliases, structDefinitions)
-
-			if genBaseTypeName != "" {
-				log.Printf("Resolved generic type '%s' to package '%s' and type '%s'", genBaseType, genBaseTypePkg, genBaseTypeName)
-			} else {
-				log.Printf("Failed to resolve generic type '%s'", genBaseType)
-			}
-
-			// Construct StructKey for generic base type
+			// Handle generic instantiation
+			genBaseTypePkg, genBaseTypeName := basePkg, baseName
 			structKey := models.StructKey{
 				Package: genBaseTypePkg,
 				Name:    genBaseTypeName,
@@ -416,21 +374,18 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 			if !exists {
 				log.Printf("Warning: Generic struct '%s' not found for result 'result'.", genBaseTypeName)
 			} else {
-				// Create a concrete StructDefinition for Pagination[ReportItem]
-				// Fully qualify type arguments if they belong to other packages
 				processedGenArgs := []string{}
-				for _, arg := range genArgs {
-					argPkg, argTypeName := resolvePackageAndType(arg, currentPackage, importAliases, structDefinitions)
-					if argPkg != "" && argPkg != currentPackage {
-						// Use package alias to qualify the type
-						processedGenArgs = append(processedGenArgs, fmt.Sprintf("%s.%s", argPkg, argTypeName))
-					} else if argPkg == currentPackage {
-						// Type belongs to the current package; use unqualified name
-						processedGenArgs = append(processedGenArgs, argTypeName)
+				for _, arg := range typeArgs {
+					argBasePkg, argBaseName := resolvePackageAndType(arg, currentPackage, importAliases, structDefinitions)
+					if argBaseName == "" {
+						argBaseName = arg
+					}
+					if argBasePkg != "" && argBasePkg != currentPackage {
+						processedGenArgs = append(processedGenArgs, fmt.Sprintf("%s.%s", argBasePkg, argBaseName))
+					} else if argBasePkg == currentPackage {
+						processedGenArgs = append(processedGenArgs, argBaseName)
 					} else {
-						// Type package not determined; log a warning and use unqualified name
-						log.Printf("Warning: Unable to determine package for type '%s'. Using unqualified name.", arg)
-						processedGenArgs = append(processedGenArgs, argTypeName)
+						processedGenArgs = append(processedGenArgs, argBaseName)
 					}
 				}
 
@@ -441,56 +396,37 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 					Name:    concreteTypeName,
 				}
 
-				// Avoid duplicating concrete struct definitions
 				if _, exists := structDefinitions[concreteKey]; !exists {
 					concreteStructDef := models.StructDefinition{
 						Name:        concreteTypeName,
 						Description: genericStructDef.Description,
 					}
 
-					// Replace type parameters with concrete types in fields
 					for _, field := range genericStructDef.Fields {
 						concreteField := field
 						concreteField.Type = utils.ReplaceTypeParams(field.Type, genericStructDef.TypeParams, processedGenArgs)
 						concreteStructDef.Fields = append(concreteStructDef.Fields, concreteField)
 					}
 
-					// Add the concrete struct to structDefinitions
 					structDefinitions[concreteKey] = concreteStructDef
-
-					// Log the creation of the concrete struct
 					log.Printf("Created concrete struct '%s' for generic type instantiation.", concreteTypeName)
+
+					// Update the result type to the concrete type
+					apiFunc.Results[len(apiFunc.Results)-1].Type = concreteTypeName
 				} else {
 					log.Printf("Concrete struct '%s' already exists.", concreteTypeName)
+					apiFunc.Results[len(apiFunc.Results)-1].Type = concreteTypeName
 				}
 			}
 		} else {
-			// Non-generic struct
-			// Resolve package for base type
-			baseTypePkg, baseTypeName := resolvePackageAndType(baseType, currentPackage, importAliases, structDefinitions)
-
-			if baseTypeName != "" {
-				log.Printf("Resolved type '%s' to package '%s' and type '%s'", baseType, baseTypePkg, baseTypeName)
-			} else {
-				log.Printf("Failed to resolve type '%s'", baseType)
-			}
-
-			// Construct StructKey
-			structKey := models.StructKey{
-				Package: baseTypePkg,
-				Name:    baseTypeName,
-			}
-
-			// Lookup the struct in structDefinitions
-			if _, exists := structDefinitions[structKey]; exists {
-				log.Printf("Found struct '%s' in package '%s' for result 'result'.", baseTypeName, baseTypePkg)
-			} else {
-				log.Printf("Warning: Struct '%s' not found for result 'result'.", baseTypeName)
+			// Non-generic struct - we already resolved and nothing special needed
+			if baseName != "" && basePkg != "" {
+				// Update the result type if needed to a fully qualified name if desired
+				// For consistency, we keep the original name. It's optional to transform result type to a qualified name.
 			}
 		}
 	}
 
-	// Validate required annotations
 	if apiFunc.Command == "" {
 		return apiFunc, ErrMissingCommand
 	}
@@ -501,68 +437,12 @@ func parseFunction(fn *ast.FuncDecl, currentPackage string, importAliases map[st
 	return apiFunc, nil
 }
 
-// resolvePackageAndType resolves the package and type name for a given type.
-// It handles fully qualified types and uses import aliases.
-// If the type is unqualified, it assigns it to the current package if it exists there.
-func resolvePackageAndType(typ string, currentPackage string, importAliases map[string]string, structDefinitions map[models.StructKey]models.StructDefinition) (pkg string, typeName string) {
-	if strings.Contains(typ, ".") {
-		// Type is fully qualified
-		parts := strings.Split(typ, ".")
-		if len(parts) != 2 {
-			return "", ""
-		}
-		alias := parts[0]
-		typeName = parts[1]
-		pkgAlias, exists := importAliases[alias]
-		if exists {
-			return pkgAlias, typeName
-		}
-		// If alias not found, assume alias is the package name
-		pkgAlias = alias
-		return pkgAlias, typeName
-	}
-
-	// Type is unqualified; check if it exists in the current package
-	key := models.StructKey{
-		Package: currentPackage,
-		Name:    typ,
-	}
-	if _, exists := structDefinitions[key]; exists {
-		return currentPackage, typ
-	}
-
-	// If not found in the current package, it's likely from another package without a prefix
-	// Log a warning and return empty strings
-	log.Printf("Type '%s' not found in package '%s'. Ensure it is imported or fully qualified.", typ, currentPackage)
-	return "", ""
-}
-
-// extractStructDescription extracts the description of a struct from its comment group.
-func extractStructDescription(cg *ast.CommentGroup) string {
-	if cg == nil {
-		return ""
-	}
-	var desc []string
-	scanner := bufio.NewScanner(strings.NewReader(cg.Text()))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		line = strings.TrimPrefix(line, "//")
-		line = strings.TrimSpace(line)
-		if line != "" {
-			desc = append(desc, line)
-		}
-	}
-	return strings.Join(desc, " ")
-}
-
-// parseGlobalTags parses global tags from a CommentGroup (file-level or function-level).
 func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 	projectInfo := models.ProjectInfo{}
 	scanner := bufio.NewScanner(strings.NewReader(cg.Text()))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
-		// Remove comment prefixes like "//", "/*", and "*/"
 		line = strings.TrimPrefix(line, "//")
 		line = strings.TrimPrefix(line, "/*")
 		line = strings.TrimSuffix(line, "*/")
@@ -575,7 +455,6 @@ func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 		if len(parts) == 0 {
 			continue
 		}
-		// Convert annotation to lowercase for case-insensitive matching
 		annotation := strings.ToLower(parts[0])
 		switch annotation {
 		case "@title":
@@ -630,7 +509,6 @@ func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 		}
 	}
 
-	// Validate mandatory global tags
 	if projectInfo.Title == "" {
 		return projectInfo, errors.New("missing @title annotation")
 	}
@@ -644,7 +522,6 @@ func parseGlobalTags(cg *ast.CommentGroup) (models.ProjectInfo, error) {
 	return projectInfo, nil
 }
 
-// extractImportAliases extracts a map of alias to package name from the file's import declarations.
 func extractImportAliases(fileAst *ast.File) map[string]string {
 	importAliases := make(map[string]string)
 	for _, imp := range fileAst.Imports {
@@ -653,12 +530,10 @@ func extractImportAliases(fileAst *ast.File) map[string]string {
 		if imp.Name != nil {
 			alias = imp.Name.Name
 		} else {
-			// Infer package name from import path
 			path := strings.Trim(imp.Path.Value, `"`)
 			parts := strings.Split(path, "/")
 			alias = parts[len(parts)-1]
 		}
-		// Assume package name is the last element of the import path
 		path := strings.Trim(imp.Path.Value, `"`)
 		parts := strings.Split(path, "/")
 		pkgName = parts[len(parts)-1]
@@ -667,7 +542,23 @@ func extractImportAliases(fileAst *ast.File) map[string]string {
 	return importAliases
 }
 
-// extractFieldDescription extracts the description from a field's comment groups (both Doc and Comment).
+func extractStructDescription(cg *ast.CommentGroup) string {
+	if cg == nil {
+		return ""
+	}
+	var desc []string
+	scanner := bufio.NewScanner(strings.NewReader(cg.Text()))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimPrefix(line, "//")
+		line = strings.TrimSpace(line)
+		if line != "" {
+			desc = append(desc, line)
+		}
+	}
+	return strings.Join(desc, " ")
+}
+
 func extractFieldDescription(doc *ast.CommentGroup, comment *ast.CommentGroup) string {
 	comments := []string{}
 
@@ -694,4 +585,38 @@ func extractFieldDescription(doc *ast.CommentGroup, comment *ast.CommentGroup) s
 	}
 
 	return strings.Join(comments, " ")
+}
+
+// resolvePackageAndType returns a package and name for any type.
+// If it's fully qualified (package.struct), it splits it.
+// If not, it tries to find it in the current package or import aliases.
+// For generics, we do not attempt to resolve package per argument here; it's done later.
+func resolvePackageAndType(typ string, currentPackage string, importAliases map[string]string, structDefinitions map[models.StructKey]models.StructDefinition) (pkg string, typeName string) {
+	if strings.Contains(typ, ".") {
+		// Possibly fully qualified or alias
+		p, n := utils.SplitQualifiedName(typ)
+		if p != "" && n != "" {
+			// Check if p is an alias
+			if actualPkg, exists := importAliases[p]; exists {
+				return actualPkg, n
+			}
+			// p is actually the package name
+			return p, n
+		}
+		// If we can't split properly, just return empty
+		return "", typ
+	}
+
+	// Unqualified name: assume current package if it exists
+	key := models.StructKey{
+		Package: currentPackage,
+		Name:    typ,
+	}
+	if _, exists := structDefinitions[key]; exists {
+		return currentPackage, typ
+	}
+
+	// Not found
+	log.Printf("Type '%s' not found in package '%s'. Ensure it is imported or fully qualified.", typ, currentPackage)
+	return "", ""
 }
