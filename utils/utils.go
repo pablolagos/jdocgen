@@ -149,3 +149,13 @@ func ReplaceTypeParams(typ string, typeParams []models.TypeParam, concreteTypes 
 	}
 	return typ
 }
+
+// SplitQualifiedName splits a fully qualified name like "package.structname" into its package and struct name.
+// Returns empty strings if the input is not qualified.
+func SplitQualifiedName(qualifiedName string) (pkg string, structName string) {
+	parts := strings.Split(qualifiedName, ".")
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return "", qualifiedName // If not qualified, return the structName only
+}

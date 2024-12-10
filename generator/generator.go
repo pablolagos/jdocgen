@@ -190,13 +190,33 @@ func GenerateDocumentation(apiFunctions []models.APIFunction, structDefinitions 
 			for _, additional := range apiFunc.AdditionalStructs {
 				baseType, _ := utils.ParseGenericType(additional)
 				if !utils.IsBasicType(baseType) {
-					// Resolve the struct key
-					for key := range structDefinitions {
-						if key.Name == baseType {
-							// Print the struct inline
-							printStructDefinitionInline(writer, key, structDefinitions, visited)
-							break
+					var resolvedKey models.StructKey
+					var found bool
+
+					// Handle fully qualified types (e.g., package.structname)
+					if strings.Contains(baseType, ".") {
+						pkg, structName := utils.SplitQualifiedName(baseType)
+						resolvedKey = models.StructKey{
+							Package: pkg,
+							Name:    structName,
 						}
+						found = true
+					} else {
+						// Unqualified types (assume current package)
+						for key := range structDefinitions {
+							if key.Name == baseType {
+								resolvedKey = key
+								found = true
+								break
+							}
+						}
+					}
+
+					if found {
+						// Print the struct inline
+						printStructDefinitionInline(writer, resolvedKey, structDefinitions, visited)
+					} else {
+						log.Printf("Warning: Struct '%s' not found for @Additional annotation.", additional)
 					}
 				}
 			}
